@@ -1,312 +1,42 @@
-﻿// === Start File: AiCodeShareTool.csproj ===
+// === Start File: Core/IExporter.cs ===
 
 
-<Project Sdk="Microsoft.NET.Sdk">
+using System.Text; // Added using directive for StringBuilder
 
-	<PropertyGroup>
-		<!-- Changed OutputType to WinExe for a GUI application -->
-		<OutputType>WinExe</OutputType>
-
-		<!-- Make sure this targets your .NET version AND includes -windows -->
-		<TargetFramework>net9.0-windows</TargetFramework>
-		<!-- Or net8.0-windows, net7.0-windows etc. -->
-
-		<ImplicitUsings>enable</ImplicitUsings>
-		<Nullable>enable</Nullable>
-
-		<!-- This line enables Windows Forms features -->
-		<UseWindowsForms>true</UseWindowsForms>
-
-		<!-- Optional: Set a default namespace if desired -->
-		<!-- <RootNamespace>AiCodeShareTool</RootNamespace> -->
-
-	</PropertyGroup>
-
-</Project>
-
-// === End File: AiCodeShareTool.csproj ===
-
-// === Start File: AiCodeShareTool.sln ===
-
-
-Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.13.35919.96
-MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AiCodeShareTool", "AiCodeShareTool.csproj", "{087E6EAC-7068-0C02-174E-F380830D21DC}"
-EndProject
-Global
-	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|Any CPU = Debug|Any CPU
-		Release|Any CPU = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{087E6EAC-7068-0C02-174E-F380830D21DC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{087E6EAC-7068-0C02-174E-F380830D21DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{087E6EAC-7068-0C02-174E-F380830D21DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{087E6EAC-7068-0C02-174E-F380830D21DC}.Release|Any CPU.Build.0 = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {3AB1B7E0-C9A0-443F-A236-D658AE235D9A}
-	EndGlobalSection
-EndGlobal
-
-// === End File: AiCodeShareTool.sln ===
-
-// === Start File: ApplicationState.cs ===
-
-
-namespace AiCodeShareTool
+namespace AiCodeShareTool.Core
 {
     /// <summary>
-    /// Holds the mutable state of the application, like last used paths.
+    /// Defines the contract for exporting project files.
+    /// The implementation will use the currently active language profile.
     /// </summary>
-    public class ApplicationState
-    {
-        public string? CurrentProjectDirectory { get; set; } = null;
-        public string? CurrentExportFilePath { get; set; } = null;
-        public string? CurrentImportFilePath { get; set; } = null;
-        public string? ActiveLanguageProfileName { get; set; } // Store the name of the active profile
-    }
-}
-
-// === End File: ApplicationState.cs ===
-
-// === Start File: Configuration/ExportSettings.cs ===
-
-
-namespace AiCodeShareTool.Configuration
-{
-    /// <summary>
-    /// Holds constants related to the export file format.
-    /// Specific language settings are now in LanguageProfile.
-    /// </summary>
-    public static class ExportSettings
-    {
-        // --- Folders to always exclude, regardless of language ---
-        public static readonly string BinFolderName = "bin";
-        public static readonly string ObjFolderName = "obj";
-        public static readonly string VsFolderName = ".vs";
-        public static readonly string GitFolderName = ".git"; // Commonly excluded
-        public static readonly string NodeModulesFolderName = "node_modules"; // Very common exclusion
-
-
-        // --- File Format Markers ---
-        public const string StartFileMarkerPrefix = "// === Start File:";
-        public const string EndFileMarkerPrefix = "// === End File:";
-        public const string ExportRootMarkerPrefix = "// === Export Root:";
-        public const string TimestampMarkerPrefix = "// === Timestamp:";
-        public const string MarkerSuffix = " ===";
-    }
-}
-
-// === End File: Configuration/ExportSettings.cs ===
-
-// === Start File: Configuration/IConfigurationService.cs ===
-
-
-using System.Collections.ObjectModel;
-
-namespace AiCodeShareTool.Configuration
-{
-    /// <summary>
-    /// Defines the contract for managing language configuration profiles.
-    /// </summary>
-    public interface IConfigurationService
+    public interface IExporter
     {
         /// <summary>
-        /// Gets a read-only collection of all available language profiles.
+        /// Exports files from a project directory to a specified output file,
+        /// using the currently active language profile configuration.
         /// </summary>
-        ReadOnlyCollection<LanguageProfile> GetAvailableProfiles();
+        /// <param name="projectDirectory">The root directory of the project to export.</param>
+        /// <param name="exportFilePath">The path to the file where the exported content will be saved.</param>
+        void Export(string projectDirectory, string exportFilePath);
 
-        /// <summary>
-        /// Gets the currently active language profile.
-        /// </summary>
-        /// <returns>The active LanguageProfile.</returns>
-        /// <exception cref="InvalidOperationException">Thrown if no profile is active.</exception>
-        LanguageProfile GetActiveProfile();
+         /// <summary>
+         /// Generates a list of files that would be included in an export based on the current settings.
+         /// </summary>
+         /// <param name="projectDirectory">The root directory of the project.</param>
+         /// <returns>A list of relative file paths, or null if an error occurred.</returns>
+         List<string>? PreviewExport(string projectDirectory);
 
-        /// <summary>
-        /// Sets the active language profile by its name.
-        /// </summary>
-        /// <param name="profileName">The unique name of the profile to activate.</param>
-        /// <returns>True if the profile was found and activated, false otherwise.</returns>
-        bool SetActiveProfile(string profileName);
-
-        /// <summary>
-        /// Gets the name of the default profile.
-        /// </summary>
-        string DefaultProfileName { get; }
+         /// <summary>
+         /// Exports the project content directly to a string builder.
+         /// </summary>
+         /// <param name="projectDirectory">The root directory of the project to export.</param>
+         /// <param name="totalCharacters">Output parameter for the total characters exported (content only).</param>
+         /// <returns>A StringBuilder containing the formatted export content, or null if a critical error occurred during setup or file searching.</returns>
+         StringBuilder? ExportToStringBuilder(string projectDirectory, out long totalCharacters);
     }
 }
 
-// === End File: Configuration/IConfigurationService.cs ===
-
-// === Start File: Configuration/InMemoryConfigurationService.cs ===
-
-
-using System.Collections.ObjectModel;
-
-namespace AiCodeShareTool.Configuration
-{
-    /// <summary>
-    /// Provides hardcoded language profiles and manages the active one.
-    /// </summary>
-    public class InMemoryConfigurationService : IConfigurationService
-    {
-        private readonly List<LanguageProfile> _profiles;
-        private LanguageProfile _activeProfile;
-
-        public string DefaultProfileName => ".NET Default";
-
-        public InMemoryConfigurationService()
-        {
-            _profiles = InitializeProfiles();
-
-            // Set the default profile as active initially
-            var defaultProfile = _profiles.FirstOrDefault(p => p.Name == DefaultProfileName);
-            _activeProfile = defaultProfile ?? _profiles.First(); // Fallback to first if default not found
-        }
-
-        private List<LanguageProfile> InitializeProfiles()
-        {
-            return new List<LanguageProfile>
-            {
-                // .NET Default Profile
-                new LanguageProfile(
-                    name: DefaultProfileName,
-                    searchPatterns: new[] {
-                        "*.cs", "*.xaml", "*.csproj", "*.sln", "*.json", "*.xml", "*.config", "*.md",
-                        "*.razor", "*.css", "*.js", "*.html", "*.htm", "*.props", "*.targets", "*.ruleset",
-                        ".dockerignore", "Dockerfile", ".editorconfig", "*.sh", "*.ps1", "*.cmd", "*.bat",
-                         "*.gitignore" // Keep .gitignore unless explicitly blacklisted below
-                    },
-                    blacklistedExtensions: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                        ".user", ".suo", ".log", ".tmp", ".pdb", ".bak", ".dll", ".exe", ".nupkg", ".snupkg"
-                    },
-                    blacklistedFileNames: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                        "launchSettings.json", "package-lock.json", "yarn.lock"
-                    }
-                ),
-
-                // Python Profile
-                 new LanguageProfile(
-                    name: "Python",
-                    searchPatterns: new[] {
-                        "*.py", "*.pyw", "*.ipynb", // Code and notebooks
-                        "*.json", "*.xml", "*.yaml", "*.yml", "*.toml", // Config
-                        "*.md", "*.rst", // Documentation
-                        "requirements.txt", "setup.py", "pyproject.toml", // Project/Dependency files
-                        ".dockerignore", "Dockerfile", ".editorconfig", "*.sh", "*.bat", // Scripts/Config
-                        ".gitignore"
-                    },
-                    blacklistedExtensions: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                       ".log", ".tmp", ".bak", ".pyc", ".pyd", ".so", // Compiled/OS specific
-                       ".egg", ".whl", // Packaging
-                       ".coverage" // Test coverage
-                    },
-                    blacklistedFileNames: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                       "__pycache__", // Directory, but good to list name too
-                       ".env", // Often contains secrets
-                       "pipfile.lock",
-                       "poetry.lock"
-                    }
-                ),
-
-                 // Generic Text Profile (Wide Scope)
-                  new LanguageProfile(
-                    name: "Generic Text",
-                    searchPatterns: new[] {
-                        "*.txt", "*.md", "*.json", "*.xml", "*.yaml", "*.yml", "*.toml",
-                        "*.csv", "*.tsv",
-                        "*.sh", "*.ps1", "*.cmd", "*.bat",
-                        "*.html", "*.htm", "*.css", "*.js",
-                        "*.config", "*.ini",
-                        ".gitignore", ".editorconfig", "Dockerfile", ".dockerignore"
-                     },
-                    blacklistedExtensions: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                       ".log", ".tmp", ".bak"
-                    },
-                    blacklistedFileNames: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                       // Fewer specific blacklisted names for generic
-                    }
-                )
-
-                // Add more profiles here (e.g., Java, JavaScript/TypeScript, etc.)
-            };
-        }
-
-
-        public ReadOnlyCollection<LanguageProfile> GetAvailableProfiles()
-        {
-            return _profiles.AsReadOnly();
-        }
-
-        public LanguageProfile GetActiveProfile()
-        {
-            // In a more complex scenario, you might load this on demand
-            return _activeProfile ?? throw new InvalidOperationException("No active profile set.");
-        }
-
-        public bool SetActiveProfile(string profileName)
-        {
-            var profile = _profiles.FirstOrDefault(p => p.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase));
-            if (profile != null)
-            {
-                _activeProfile = profile;
-                return true;
-            }
-            return false;
-        }
-    }
-}
-
-// === End File: Configuration/InMemoryConfigurationService.cs ===
-
-// === Start File: Configuration/LanguageProfile.cs ===
-
-
-using System.Collections.ObjectModel;
-
-namespace AiCodeShareTool.Configuration
-{
-    /// <summary>
-    /// Represents a configuration profile for a specific language or project type.
-    /// </summary>
-    public class LanguageProfile
-    {
-        public string Name { get; }
-        public ReadOnlyCollection<string> SearchPatterns { get; }
-        public ReadOnlyCollection<string> BlacklistedExtensions { get; }
-        public ReadOnlyCollection<string> BlacklistedFileNames { get; }
-
-        // Folders to exclude are currently global in ExportSettings, but could be moved here if needed per-profile
-        // public ReadOnlyCollection<string> BlacklistedFolderNames { get; }
-
-        public LanguageProfile(
-            string name,
-            IEnumerable<string> searchPatterns,
-            IEnumerable<string> blacklistedExtensions,
-            IEnumerable<string> blacklistedFileNames)
-        {
-            Name = name ?? throw new ArgumentNullException(nameof(name));
-
-            SearchPatterns = new ReadOnlyCollection<string>((searchPatterns ?? Enumerable.Empty<string>()).ToList());
-            BlacklistedExtensions = new ReadOnlyCollection<string>((blacklistedExtensions ?? Enumerable.Empty<string>())
-                                                                    .Select(ext => ext.StartsWith('.') ? ext : "." + ext) // Ensure leading dot
-                                                                    .ToList());
-            BlacklistedFileNames = new ReadOnlyCollection<string>((blacklistedFileNames ?? Enumerable.Empty<string>()).ToList());
-
-            if (string.IsNullOrWhiteSpace(Name)) throw new ArgumentException("Profile name cannot be empty.", nameof(name));
-            if (!SearchPatterns.Any()) throw new ArgumentException("Profile must have at least one search pattern.", nameof(searchPatterns));
-        }
-    }
-}
-
-// === End File: Configuration/LanguageProfile.cs ===
+// === End File: Core/IExporter.cs ===
 
 // === Start File: Core/FileSystemExporter.cs ===
 
@@ -331,6 +61,71 @@ namespace AiCodeShareTool.Core
             _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         }
 
+        /// <summary>
+        /// Finds files matching the active profile but does not write the export file.
+        /// </summary>
+        /// <param name="projectDirectory">The root directory of the project.</param>
+        /// <returns>A list of relative file paths that would be exported, or null if an error occurs.</returns>
+        public List<string>? PreviewExport(string projectDirectory)
+        {
+             _ui.ClearOutput(); // Clear previous messages
+             LanguageProfile activeProfile;
+             try { activeProfile = _configService.GetActiveProfile(); }
+             catch (InvalidOperationException ex)
+             {
+                 _ui.DisplayError($"Cannot preview: No language profile is active. {ex.Message}");
+                 return null;
+             }
+
+             _ui.DisplayMessage($"--- Starting Export Preview using '{activeProfile.Name}' profile ---");
+
+             if (string.IsNullOrWhiteSpace(projectDirectory) || !Directory.Exists(projectDirectory))
+             {
+                 _ui.DisplayError($"Project directory '{projectDirectory ?? "<null>"}' not found or inaccessible.");
+                 return null;
+             }
+
+             try
+             {
+                 var excludedFolders = GetExcludedFolders();
+                 _ui.DisplayMessage($"Searching in '{projectDirectory}' for files matching profile patterns...");
+                 _ui.DisplayMessage($"Excluding folders: {string.Join(", ", excludedFolders)}");
+
+                 string[] foundFiles = FindAndFilterFiles(projectDirectory, activeProfile, excludedFolders);
+
+                 if (foundFiles.Length == 0)
+                 {
+                     _ui.DisplayWarning($"No suitable files found matching profile patterns in '{projectDirectory}'.");
+                     return new List<string>(); // Return empty list
+                 }
+
+                 _ui.DisplaySuccess($"Preview complete: Found {foundFiles.Length} file(s) that would be exported.");
+
+                 // Return relative paths
+                 string baseDirFullPath = Path.GetFullPath(projectDirectory);
+                 return foundFiles
+                     .Select(fullPath => Path.GetRelativePath(baseDirFullPath, fullPath))
+                     .OrderBy(relativePath => relativePath)
+                     .ToList();
+             }
+              catch (ArgumentException argEx)
+              {
+                    // Catch specific errors like different drives during relative path calculation
+                    _ui.DisplayError($"Error processing paths during preview (e.g., files on different drives?): {argEx.Message}");
+                    return null;
+              }
+             catch (Exception ex)
+             {
+                  _ui.DisplayError($"Unexpected error during preview: {ex.Message}");
+                  return null;
+             }
+              finally
+             {
+                  _ui.DisplayMessage($"--- Preview Finished ---");
+             }
+        }
+
+
         public void Export(string projectDirectory, string exportFilePath)
         {
             _ui.ClearOutput(); // Clear previous messages in UI
@@ -349,23 +144,14 @@ namespace AiCodeShareTool.Core
 
             if (!ValidateInputs(projectDirectory, exportFilePath)) return;
 
+            long totalCharactersExported = 0;
+
             try
             {
                 EnsureExportDirectoryExists(exportFilePath);
 
-                // Combine global excludes with profile excludes if they were added to profile
-                var excludedFolders = new[] {
-                    ExportSettings.BinFolderName, ExportSettings.ObjFolderName,
-                    ExportSettings.VsFolderName, ExportSettings.GitFolderName,
-                    ExportSettings.NodeModulesFolderName
-                }.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-
-                 _ui.DisplayMessage($"Searching for files matching patterns: {string.Join(", ", activeProfile.SearchPatterns)}");
-                 _ui.DisplayMessage($"Excluding folders: {string.Join(", ", excludedFolders)}");
-                 _ui.DisplayMessage($"Excluding extensions: {string.Join(", ", activeProfile.BlacklistedExtensions)}");
-                 _ui.DisplayMessage($"Excluding filenames: {string.Join(", ", activeProfile.BlacklistedFileNames)}");
-
-
+                var excludedFolders = GetExcludedFolders();
+                LogExportParameters(activeProfile, excludedFolders);
                 _ui.DisplayMessage($"\nSearching in '{projectDirectory}'...");
 
                 var codeFiles = FindAndFilterFiles(projectDirectory, activeProfile, excludedFolders);
@@ -378,9 +164,10 @@ namespace AiCodeShareTool.Core
 
                 _ui.DisplayMessage($"Found {codeFiles.Length} file(s) after filtering. Exporting to '{exportFilePath}'...");
 
-                WriteExportFile(projectDirectory, exportFilePath, codeFiles);
+                totalCharactersExported = WriteExportFile(projectDirectory, exportFilePath, codeFiles);
 
                 _ui.DisplaySuccess($"\nExport completed successfully to '{exportFilePath}'.");
+                 _ui.DisplayMessage($"Total characters exported: {totalCharactersExported:N0}"); // Display character count
             }
             catch (UnauthorizedAccessException ex) { _ui.DisplayError($"Access denied during export. {ex.Message}"); }
             catch (IOException ex) { _ui.DisplayError($"I/O error during export setup/write. {ex.Message}"); }
@@ -390,6 +177,77 @@ namespace AiCodeShareTool.Core
                  _ui.DisplayMessage($"--- Export Finished ---");
             }
         }
+
+        // Implementation matches the interface signature (StringBuilder?)
+        public StringBuilder? ExportToStringBuilder(string projectDirectory, out long totalCharacters)
+        {
+            totalCharacters = 0;
+            _ui.ClearOutput();
+            LanguageProfile activeProfile;
+            try { activeProfile = _configService.GetActiveProfile(); }
+            catch (InvalidOperationException ex)
+            {
+                _ui.DisplayError($"Cannot export: No language profile is active. {ex.Message}");
+                return null; // Return null on setup error
+            }
+
+            _ui.DisplayMessage($"--- Starting Export to String using '{activeProfile.Name}' profile ---");
+
+            if (string.IsNullOrWhiteSpace(projectDirectory) || !Directory.Exists(projectDirectory))
+             {
+                 _ui.DisplayError($"Project directory '{projectDirectory ?? "<null>"}' not found or inaccessible.");
+                 return null; // Return null on setup error
+             }
+
+            try
+            {
+                var excludedFolders = GetExcludedFolders();
+                 LogExportParameters(activeProfile, excludedFolders);
+                _ui.DisplayMessage($"\nSearching in '{projectDirectory}'...");
+
+                var codeFiles = FindAndFilterFiles(projectDirectory, activeProfile, excludedFolders);
+
+                if (codeFiles.Length == 0)
+                {
+                    _ui.DisplayWarning($"No suitable, non-blacklisted files found matching profile patterns in '{projectDirectory}'. Export aborted.");
+                     // Return empty builder, not null, as the operation technically succeeded but found nothing.
+                     return new StringBuilder();
+                }
+
+                _ui.DisplayMessage($"Found {codeFiles.Length} file(s) after filtering. Building export string...");
+
+                // BuildExportContent returns non-null StringBuilder but can throw OOM
+                var sb = BuildExportContent(projectDirectory, codeFiles, out totalCharacters);
+
+                _ui.DisplaySuccess($"\nExport string built successfully.");
+                _ui.DisplayMessage($"Total characters exported: {totalCharacters:N0}");
+                return sb; // Return the non-null StringBuilder
+
+            }
+             catch (UnauthorizedAccessException ex) { _ui.DisplayError($"Access denied during export string build. {ex.Message}"); return null; }
+             catch (IOException ex) { _ui.DisplayError($"I/O error during export string build. {ex.Message}"); return null; } // Less likely here
+             catch (OutOfMemoryException oomEx) { _ui.DisplayError($"Out of memory during export string build. {oomEx.Message}"); return null; } // Catch OOM specifically
+            catch (Exception ex) { _ui.DisplayError($"Unexpected error during export string build. {ex.Message}"); return null; }
+            finally
+            {
+                 _ui.DisplayMessage($"--- Export to String Finished ---");
+            }
+        }
+
+         private void LogExportParameters(LanguageProfile activeProfile, string[] excludedFolders)
+         {
+             _ui.DisplayMessage($"Searching for files matching patterns: {string.Join(", ", activeProfile.SearchPatterns)}");
+             _ui.DisplayMessage($"Excluding folders: {string.Join(", ", excludedFolders)}");
+             _ui.DisplayMessage($"Excluding extensions: {string.Join(", ", activeProfile.BlacklistedExtensions)}");
+             _ui.DisplayMessage($"Excluding filenames: {string.Join(", ", activeProfile.BlacklistedFileNames)}");
+         }
+
+        private string[] GetExcludedFolders() => new[] {
+            ExportSettings.BinFolderName, ExportSettings.ObjFolderName,
+            ExportSettings.VsFolderName, ExportSettings.GitFolderName,
+            ExportSettings.NodeModulesFolderName
+        }.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
 
         private bool ValidateInputs(string projectDirectory, string exportFilePath)
         {
@@ -446,16 +304,16 @@ namespace AiCodeShareTool.Core
             {
                 IgnoreInaccessible = true,
                 RecurseSubdirectories = true,
-                // MatchCasing can be adjusted if needed, default depends on OS
-                 MatchType = MatchType.Simple, // Use simple wildcard matching
-                 AttributesToSkip = FileAttributes.Hidden | FileAttributes.System // Optionally skip hidden/system files
+                 MatchType = MatchType.Simple,
+                 AttributesToSkip = FileAttributes.Hidden | FileAttributes.System
             };
 
-            foreach (string pattern in profile.SearchPatterns)
+            // Use the profile's SearchPatternsHashSet for potentially faster lookups if needed,
+            // but Directory.EnumerateFiles handles the patterns directly.
+             foreach (string pattern in profile.SearchPatterns) // Use the ReadOnlyCollection for iteration
             {
                 try
                 {
-                     // Ensure pattern doesn't try to escape the root directory
                      if(pattern.Contains("..")) {
                          _ui.DisplayWarning($"Skipping potentially unsafe search pattern: '{pattern}'");
                          continue;
@@ -463,522 +321,163 @@ namespace AiCodeShareTool.Core
                     allFiles.AddRange(Directory.EnumerateFiles(projectDirectory, pattern, enumOptions));
                 }
                  catch (ArgumentException argEx) { _ui.DisplayWarning($"Invalid search pattern '{pattern}'. Skipping. Error: {argEx.Message}"); }
+                 catch (DirectoryNotFoundException) { /* Ignore specific error if a pattern targets a non-existent dir */ }
                 catch (Exception ex) { _ui.DisplayWarning($"Error enumerating files for pattern '{pattern}': {ex.Message}"); }
             }
 
             string fullProjDirPath = Path.GetFullPath(projectDirectory);
-            // Ensure trailing slash for robust StartsWith comparison
-            string lowerProjDirWithSlash = Path.TrimEndingDirectorySeparator(fullProjDirPath.ToLowerInvariant()) + Path.DirectorySeparatorChar;
+             // Use TrimEndingDirectorySeparator before adding slash to handle root dirs correctly (e.g., C:\)
+            string lowerProjDirWithSlash = Path.TrimEndingDirectorySeparator(fullProjDirPath).ToLowerInvariant() + Path.DirectorySeparatorChar;
 
-            // Pre-compile excluded folder path fragments for efficiency
-            var excludedFolderFragments = globallyExcludedFolders
-                 .Select(folder => Path.DirectorySeparatorChar + folder.ToLowerInvariant() + Path.DirectorySeparatorChar)
-                 .ToArray();
 
-             // Use HashSets for faster lookups
-             var blacklistedExtSet = new HashSet<string>(profile.BlacklistedExtensions, StringComparer.OrdinalIgnoreCase);
-             var blacklistedNameSet = new HashSet<string>(profile.BlacklistedFileNames, StringComparer.OrdinalIgnoreCase);
+            // Use the internal HashSets from the profile for efficient filtering
+             var blacklistedExtSet = profile.BlacklistedExtensionsHashSet;
+             var blacklistedNameSet = profile.BlacklistedFileNamesHashSet;
 
 
             return allFiles
-                .AsParallel() // Process filtering in parallel for potential speedup
-                .Where(f => IsFileValidForExport(f, lowerProjDirWithSlash, excludedFolderFragments, blacklistedExtSet, blacklistedNameSet))
+                .AsParallel()
+                 // Pass globallyExcludedFolders to the lambda
+                .Where(f => IsFileValidForExport(f, lowerProjDirWithSlash, globallyExcludedFolders, blacklistedExtSet, blacklistedNameSet))
                 .Distinct()
-                .OrderBy(f => f) // Order after filtering and making distinct
+                .OrderBy(f => f)
                 .ToArray();
         }
 
-        private bool IsFileValidForExport(string filePath, string lowerProjDirWithSlash, string[] excludedFolderFragments, HashSet<string> blacklistedExtSet, HashSet<string> blacklistedNameSet)
+        private bool IsFileValidForExport(string filePath, string lowerProjDirWithSlash, string[] excludedFolderNames, HashSet<string> blacklistedExtSet, HashSet<string> blacklistedNameSet)
         {
             try
             {
-                string fullFilePath = Path.GetFullPath(filePath); // Resolve symlinks etc.
+                string fullFilePath = Path.GetFullPath(filePath);
                 string lowerFullFilePath = fullFilePath.ToLowerInvariant();
                 string fileName = Path.GetFileName(filePath);
-                string fileExtension = Path.GetExtension(filePath)?.ToLowerInvariant() ?? ""; // Includes the dot, handle null
+                string fileExtension = Path.GetExtension(filePath) ?? ""; // Ensure non-null, HashSet handles leading dot
 
-                // Check if path contains any excluded folder fragment
-                bool isInExcludedFolder = excludedFolderFragments.Any(frag => lowerFullFilePath.Contains(frag, StringComparison.OrdinalIgnoreCase));
+                // Must be within project dir check first
+                if (!lowerFullFilePath.StartsWith(lowerProjDirWithSlash, StringComparison.OrdinalIgnoreCase))
+                {
+                     return false; // Not under the project root
+                }
+
+
+                // Check if path contains any excluded folder name as a whole component
+                 // Get relative path AFTER ensuring it's under the root
+                string relativePath = Path.GetRelativePath(lowerProjDirWithSlash, lowerFullFilePath);
+
+                 // Handle edge case where relative path might be just the filename (if file is in root)
+                 // or if GetDirectoryName returns null for a root path component.
+                string? dirName = Path.GetDirectoryName(relativePath);
+                string[] pathComponents = string.IsNullOrEmpty(dirName)
+                                          ? Array.Empty<string>() // No directory components if in root or invalid
+                                          : dirName.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                 // Check if any path component matches an excluded folder name
+                 bool isInExcludedFolder = pathComponents.Any(component =>
+                    !string.IsNullOrEmpty(component) && // Ensure component is not empty
+                    excludedFolderNames.Contains(component, StringComparer.OrdinalIgnoreCase)
+                 );
+
 
                 if (isInExcludedFolder) return false;
 
+                 // Use the pre-computed HashSets with OrdinalIgnoreCase comparer
                 bool isBlacklisted = blacklistedNameSet.Contains(fileName) ||
-                                     (!string.IsNullOrEmpty(fileExtension) && blacklistedExtSet.Contains(fileExtension));
+                                     (!string.IsNullOrEmpty(fileExtension) && blacklistedExtSet.Contains(fileExtension)); // HashSet handles leading dot check internally now
 
                 if (isBlacklisted) return false;
 
-                // Must be within project dir (using StartsWith check with trailing slash)
-                return lowerFullFilePath.StartsWith(lowerProjDirWithSlash, StringComparison.OrdinalIgnoreCase);
+                 return true; // If not excluded or blacklisted, it's valid
             }
             catch (PathTooLongException) {
                 _ui.DisplayWarning($"Path too long. Skipping file: '{filePath}'");
                  return false;
             }
-            catch (Exception ex) // Catch SecurityException, ArgumentException, etc.
+            catch (ArgumentException argEx) {
+                 // Path.GetRelativePath can throw if paths are on different drives etc.
+                 _ui.DisplayWarning($"Could not determine relative path for '{filePath}'. Skipping. Error: {argEx.Message}");
+                 return false;
+            }
+            catch (Exception ex)
             {
                 _ui.DisplayWarning($"Could not process path '{filePath}'. Skipping. Error: {ex.Message}");
                 return false;
             }
         }
 
-        private void WriteExportFile(string projectDirectory, string exportFilePath, string[] codeFiles)
+        /// <summary>
+        /// Writes the export file and returns the total number of characters written (content only).
+        /// </summary>
+        private long WriteExportFile(string projectDirectory, string exportFilePath, string[] codeFiles)
         {
-            // Use UTF8 without BOM
             var utf8EncodingWithoutBom = new UTF8Encoding(false);
+            long totalChars;
 
             using (StreamWriter writer = new StreamWriter(exportFilePath, false, utf8EncodingWithoutBom))
             {
-                writer.WriteLine($"{ExportSettings.ExportRootMarkerPrefix} {projectDirectory}{ExportSettings.MarkerSuffix}");
-                writer.WriteLine($"{ExportSettings.TimestampMarkerPrefix} {DateTime.Now:yyyy-MM-dd HH:mm:ss}{ExportSettings.MarkerSuffix}");
-                writer.WriteLine(); // Blank line after headers
-
-                foreach (string filePath in codeFiles) // Already ordered by FindAndFilterFiles
-                {
-                    try
-                    {
-                        string relativePath = Path.GetRelativePath(projectDirectory, filePath);
-                        // Use forward slashes consistently in markers for cross-platform compatibility
-                        string markerPath = relativePath.Replace(Path.DirectorySeparatorChar, '/');
-
-                        writer.WriteLine($"{ExportSettings.StartFileMarkerPrefix} {markerPath}{ExportSettings.MarkerSuffix}");
-                        writer.WriteLine(); // Blank line before content
-
-                        // Read file carefully, try detecting encoding if possible, fallback to UTF-8
-                        // For simplicity here, stick with reading as UTF-8, which covers many cases.
-                        // More robust solution would involve BOM detection or libraries like Ude.NetStandard
-                        string fileContent = File.ReadAllText(filePath, Encoding.UTF8);
-                        writer.WriteLine(fileContent.TrimEnd('\r', '\n')); // Write content, trimming trailing newlines only
-
-                        writer.WriteLine(); // Blank line before end marker
-                        writer.WriteLine($"{ExportSettings.EndFileMarkerPrefix} {markerPath}{ExportSettings.MarkerSuffix}");
-                        writer.WriteLine(); // Blank line after end marker
-                        _ui.DisplayMessage($"  + Exported: {relativePath}"); // Provide feedback
-                    }
-                    catch (IOException readEx) { _ui.DisplayWarning($"Could not read file '{filePath}'. Skipping. Error: {readEx.Message}"); }
-                    catch (Exception fileEx) { _ui.DisplayWarning($"An unexpected error occurred processing file '{filePath}'. Skipping. Error: {fileEx.Message}"); }
-                }
+                 // Use shared logic to build content
+                 // BuildExportContent now returns non-null SB
+                StringBuilder content = BuildExportContent(projectDirectory, codeFiles, out totalChars);
+                writer.Write(content.ToString()); // Write the whole built string
             }
+            return totalChars;
         }
+
+         /// <summary>
+         /// Builds the complete export content into a StringBuilder. Can throw OutOfMemoryException.
+         /// </summary>
+         /// <param name="projectDirectory">Base project directory.</param>
+         /// <param name="codeFiles">Array of full file paths to include.</param>
+         /// <param name="totalChars">Output parameter for total content characters.</param>
+         /// <returns>A StringBuilder containing the formatted export data (always non-null, but might throw OOM).</returns>
+         /// <exception cref="OutOfMemoryException">Thrown if reading a file exhausts available memory.</exception>
+         private StringBuilder BuildExportContent(string projectDirectory, string[] codeFiles, out long totalChars)
+         {
+             totalChars = 0;
+             StringBuilder sb = new StringBuilder();
+
+             sb.AppendLine($"{ExportSettings.ExportRootMarkerPrefix} {projectDirectory}{ExportSettings.MarkerSuffix}");
+             sb.AppendLine($"{ExportSettings.TimestampMarkerPrefix} {DateTime.Now:yyyy-MM-dd HH:mm:ss}{ExportSettings.MarkerSuffix}");
+             sb.AppendLine(); // Blank line after headers
+
+             foreach (string filePath in codeFiles)
+             {
+                 try
+                 {
+                     string relativePath = Path.GetRelativePath(projectDirectory, filePath);
+                     string markerPath = relativePath.Replace(Path.DirectorySeparatorChar, '/');
+
+                     sb.AppendLine($"{ExportSettings.StartFileMarkerPrefix} {markerPath}{ExportSettings.MarkerSuffix}");
+                     sb.AppendLine(); // Blank line before content
+
+                     string fileContent = File.ReadAllText(filePath, Encoding.UTF8); // This can throw OOM
+                     string trimmedContent = fileContent.TrimEnd('\r', '\n');
+                     sb.AppendLine(trimmedContent); // AppendLine handles line ending
+
+                     totalChars += trimmedContent.Length; // Count characters of the actual content written
+
+                     sb.AppendLine(); // Blank line before end marker
+                     sb.AppendLine($"{ExportSettings.EndFileMarkerPrefix} {markerPath}{ExportSettings.MarkerSuffix}");
+                     sb.AppendLine(); // Blank line after end marker
+                     _ui.DisplayMessage($"  + Processed: {relativePath}"); // Provide feedback during build too
+                 }
+                 catch (IOException readEx) { _ui.DisplayWarning($"Could not read file '{filePath}'. Skipping. Error: {readEx.Message}"); }
+                 // Allow OOM to propagate up from File.ReadAllText
+                 catch (OutOfMemoryException oomEx) { _ui.DisplayError($"Out of memory reading file '{filePath}'. Skipping remaining files. {oomEx.Message}"); throw; }
+                 catch (Exception fileEx) { _ui.DisplayWarning($"An unexpected error occurred processing file '{filePath}'. Skipping. Error: {fileEx.Message}"); }
+             }
+             return sb; // Return the builder, potentially empty, but never null unless OOM was thrown
+         }
     }
 }
 
 // === End File: Core/FileSystemExporter.cs ===
 
-// === Start File: Core/FileSystemImporter.cs ===
-
-
-using System.Text;
-using AiCodeShareTool.Configuration;
-
-namespace AiCodeShareTool.Core
-{
-    /// <summary>
-    /// Implements the import functionality using the local file system.
-    /// Import does not depend on language profiles, only on the file format markers.
-    /// </summary>
-    public class FileSystemImporter : IImporter
-    {
-        private readonly IUserInterface _ui;
-
-        public FileSystemImporter(IUserInterface ui)
-        {
-            _ui = ui ?? throw new ArgumentNullException(nameof(ui));
-        }
-
-        public void Import(string projectDirectory, string importFilePath)
-        {
-            _ui.ClearOutput(); // Clear previous messages in UI
-            _ui.DisplayMessage($"--- Starting Import ---");
-
-            if (!ValidateInputs(projectDirectory, importFilePath)) return;
-
-            _ui.DisplayMessage($"Starting import from '{importFilePath}' into '{projectDirectory}'...");
-            int filesImported = 0;
-            int filesSkipped = 0;
-            string? currentRelativePath = null;
-            StringBuilder fileContentBuilder = new StringBuilder();
-            bool readingFileContent = false;
-            int lineNumber = 0;
-
-            try
-            {
-                // Detect encoding (simple BOM check), default to UTF-8
-                 Encoding detectedEncoding = DetectEncoding(importFilePath);
-                 _ui.DisplayMessage($"Detected import file encoding: {detectedEncoding.EncodingName}");
-
-                using (StreamReader reader = new StreamReader(importFilePath, detectedEncoding))
-                {
-                    string? line;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        lineNumber++;
-                        // Trim only for marker detection, preserve leading/trailing spaces in content lines
-                        string trimmedLine = line.Trim();
-
-                        if (trimmedLine.StartsWith(ExportSettings.StartFileMarkerPrefix) && trimmedLine.EndsWith(ExportSettings.MarkerSuffix))
-                        {
-                            // Handle case where a previous file block wasn't properly closed
-                            if (readingFileContent && !string.IsNullOrEmpty(currentRelativePath))
-                            {
-                                _ui.DisplayWarning($"Line ~{lineNumber}: Found new start marker before end marker for '{currentRelativePath}'. Skipping previous partial content.");
-                                filesSkipped++;
-                            }
-
-                            currentRelativePath = ExtractPathFromMarker(trimmedLine, ExportSettings.StartFileMarkerPrefix);
-
-                            if (!IsPathValidForImport(currentRelativePath, lineNumber))
-                            {
-                                currentRelativePath = null;
-                                readingFileContent = false;
-                                filesSkipped++;
-                                continue; // Skip to next line
-                            }
-
-                            // Normalize path for internal comparison and use
-                            currentRelativePath = currentRelativePath.Replace('/', Path.DirectorySeparatorChar);
-                            readingFileContent = true;
-                            fileContentBuilder.Clear();
-
-                            // Consume the single blank line typically following the start marker.
-                            // Peek to see if the next line exists and is blank.
-                            int nextChar = reader.Peek();
-                            if (nextChar != -1) // Check if not EOF
-                            {
-                                // Need to read the line to check if it's blank, then decide if we keep it or not.
-                                // This is tricky. Let's assume the exporter *always* puts a blank line after the START marker.
-                                // We read and discard this line. If the content starts immediately, this might discard the first line.
-                                // A safer approach: don't discard here, let the content builder handle it, and maybe trim later.
-                                // Let's stick to the simple approach for now: assume blank line after start marker.
-                                string? potentialBlankLine = reader.ReadLine();
-                                if (potentialBlankLine != null) // Should not be null if Peek didn't return -1
-                                {
-                                     lineNumber++;
-                                     // If the line wasn't actually blank, add it back? Too complex.
-                                     // Assume the convention holds. If not, the first line might be lost.
-                                }
-                            }
-                        }
-                        else if (trimmedLine.StartsWith(ExportSettings.EndFileMarkerPrefix) && trimmedLine.EndsWith(ExportSettings.MarkerSuffix) && readingFileContent)
-                        {
-                             // Before processing the end marker, remove the single blank line *preceding* it,
-                             // which the exporter adds.
-                             string currentContent = fileContentBuilder.ToString();
-                             if (currentContent.EndsWith(Environment.NewLine))
-                             {
-                                 string contentWithoutLastNewLine = currentContent.Substring(0, currentContent.Length - Environment.NewLine.Length);
-                                 // Check if the character before that was *also* a newline char (indicating a blank line)
-                                 if (contentWithoutLastNewLine.EndsWith(Environment.NewLine))
-                                 {
-                                      // It was a blank line, remove it from the builder
-                                       fileContentBuilder.Length = contentWithoutLastNewLine.Length;
-                                 }
-                             }
-
-
-                            if (currentRelativePath == null)
-                            {
-                                _ui.DisplayWarning($"Line {lineNumber}: Found end marker without a corresponding valid start marker. Ignoring.");
-                                continue; // Skip this marker
-                            }
-
-                            string endMarkerPathRaw = ExtractPathFromMarker(trimmedLine, ExportSettings.EndFileMarkerPrefix);
-                            if (string.IsNullOrWhiteSpace(endMarkerPathRaw))
-                            {
-                                 _ui.DisplayWarning($"Line {lineNumber}: Found end marker with invalid/empty path. Ignoring.");
-                                 continue; // Skip this marker
-                            }
-                            string endMarkerPath = endMarkerPathRaw.Replace('/', Path.DirectorySeparatorChar);
-
-                            if (endMarkerPath.Equals(currentRelativePath, StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (WriteImportedFile(projectDirectory, currentRelativePath, fileContentBuilder))
-                                {
-                                    filesImported++;
-                                }
-                                else
-                                {
-                                    filesSkipped++; // WriteImportedFile logs specific errors
-                                }
-                            }
-                            else
-                            {
-                                _ui.DisplayWarning($"Line {lineNumber}: End marker path '{endMarkerPath}' did not match expected '{currentRelativePath}'. Skipping content block.");
-                                filesSkipped++;
-                            }
-
-                            // Reset state for the next file block
-                            readingFileContent = false;
-                            currentRelativePath = null;
-                            fileContentBuilder.Clear();
-
-                             // Consume the single blank line typically following the END marker.
-                             int nextChar = reader.Peek();
-                             if (nextChar != -1)
-                             {
-                                string? potentialBlankLine = reader.ReadLine();
-                                if (potentialBlankLine != null) lineNumber++;
-                             }
-                        }
-                        else if (readingFileContent && currentRelativePath != null)
-                        {
-                            // Add line to content buffer, preserving original line structure
-                            fileContentBuilder.AppendLine(line);
-                        }
-                        // Ignore lines outside of start/end blocks (like headers or blank lines between files)
-                    }
-                } // End using StreamReader
-
-                // Check if we ended mid-file
-                if (readingFileContent && !string.IsNullOrEmpty(currentRelativePath))
-                {
-                    _ui.DisplayWarning($"Reached end of import file while still reading content for '{currentRelativePath}'. File might be truncated or missing end marker. Skipping final content block.");
-                    filesSkipped++;
-                }
-
-                _ui.DisplaySuccess($"\nImport finished. {filesImported} file(s) processed, {filesSkipped} file block(s) skipped due to warnings or errors.");
-
-            }
-            catch (IOException ex) { _ui.DisplayError($"An I/O error occurred during import file reading: {ex.Message}"); }
-            catch (OutOfMemoryException oomEx) { _ui.DisplayError($"Out of memory, the import file might be too large. {oomEx.Message}"); }
-            catch (Exception ex) { _ui.DisplayError($"An unexpected error occurred during import parsing: {ex.Message}"); }
-            finally
-            {
-                _ui.DisplayMessage($"--- Import Finished ---");
-            }
-        }
-
-        private Encoding DetectEncoding(string filename)
-        {
-             // Simple BOM detection
-            byte[] bom = new byte[4];
-            using (var file = new FileStream(filename, FileMode.Open, FileAccess.Read))
-            {
-                file.Read(bom, 0, 4);
-            }
-
-             if (bom[0] == 0xef && bom[1] == 0xbb && bom[2] == 0xbf) return Encoding.UTF8; // UTF-8 BOM
-             if (bom[0] == 0xff && bom[1] == 0xfe) return Encoding.Unicode; // UTF-16 LE BOM
-             if (bom[0] == 0xfe && bom[1] == 0xff) return Encoding.BigEndianUnicode; // UTF-16 BE BOM
-             // Could add UTF-32 checks if needed (bom[0] == 0x00 && bom[1] == 0x00 && bom[2] == 0xfe && bom[3] == 0xff)
-
-             // Fallback or more advanced detection could go here.
-             // For now, assume UTF-8 without BOM if no BOM is found.
-             return new UTF8Encoding(false); // UTF-8 without BOM
-        }
-
-
-        private bool ValidateInputs(string projectDirectory, string importFilePath)
-        {
-            if (string.IsNullOrWhiteSpace(projectDirectory))
-            {
-                 _ui.DisplayError("Project directory path is missing.");
-                 return false;
-             }
-            if (!Directory.Exists(projectDirectory))
-            {
-                _ui.DisplayError($"Project directory '{projectDirectory}' does not exist.");
-                return false;
-            }
-            if (string.IsNullOrWhiteSpace(importFilePath))
-            {
-                 _ui.DisplayError("Import file path is missing.");
-                 return false;
-            }
-            if (!File.Exists(importFilePath))
-            {
-                _ui.DisplayError($"Import file '{importFilePath}' does not exist.");
-                return false;
-            }
-             // Check if import file path is valid (basic check)
-            try
-            {
-                Path.GetFullPath(importFilePath);
-            }
-            catch (Exception ex)
-            {
-                 _ui.DisplayError($"Import file path is invalid: {ex.Message}");
-                return false;
-            }
-            return true;
-        }
-
-        private string? ExtractPathFromMarker(string line, string prefix)
-        {
-            if (!line.StartsWith(prefix) || !line.EndsWith(ExportSettings.MarkerSuffix)) return null;
-
-            int startIndex = prefix.Length;
-            int endIndex = line.Length - ExportSettings.MarkerSuffix.Length;
-            if (endIndex <= startIndex) return null; // Empty path
-
-            return line.Substring(startIndex, endIndex - startIndex).Trim();
-        }
-
-        private bool IsPathValidForImport(string? relativePath, int lineNumber)
-        {
-            if (string.IsNullOrWhiteSpace(relativePath))
-            {
-                _ui.DisplayWarning($"Line {lineNumber}: Invalid empty path in marker. Skipping block.");
-                return false;
-            }
-            // Basic check for invalid path characters and directory traversal attempts
-            // Normalize separators for consistent check before checking invalid chars
-            string normalizedPath = relativePath.Replace('/', Path.DirectorySeparatorChar);
-            if (normalizedPath.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || normalizedPath.Contains(".." + Path.DirectorySeparatorChar) || normalizedPath.StartsWith(".." + Path.DirectorySeparatorChar) || normalizedPath == "..")
-            {
-                _ui.DisplayWarning($"Line {lineNumber}: Invalid or potentially unsafe path detected in marker ('{relativePath}'). Skipping block.");
-                return false;
-            }
-             // Ensure it doesn't start with a drive letter or root path, indicating an absolute path slipped through
-            if (Path.IsPathRooted(normalizedPath))
-            {
-                _ui.DisplayWarning($"Line {lineNumber}: Absolute path detected in marker ('{relativePath}'). Only relative paths allowed. Skipping block.");
-                return false;
-            }
-
-            return true;
-        }
-
-
-        private bool WriteImportedFile(string baseDirectory, string relativePath, StringBuilder contentBuilder)
-        {
-            string fullPath;
-             // Get final content. The blank line trimming is now handled during parsing.
-             // We still trim trailing whitespace/newlines that might exist at the very end of the content block.
-            string content = contentBuilder.ToString().TrimEnd('\r', '\n');
-
-            try
-            {
-                // Combine first, then get full path for security check
-                string combinedPath = Path.Combine(baseDirectory, relativePath);
-                fullPath = Path.GetFullPath(combinedPath);
-
-                // **Security Check:** Prevent writing outside the intended project directory
-                string fullBasePathCanonical = Path.GetFullPath(baseDirectory + Path.DirectorySeparatorChar); // Ensure trailing slash for comparison
-                if (!fullPath.StartsWith(fullBasePathCanonical, StringComparison.OrdinalIgnoreCase))
-                {
-                    _ui.DisplayWarning($"  Security Warning: Skipping file '{relativePath}'. Target path '{fullPath}' is outside the base project directory '{fullBasePathCanonical}'.");
-                    return false;
-                }
-            }
-            catch (ArgumentException argEx) { _ui.DisplayError($"  Error creating path for '{relativePath}'. Skipping. {argEx.Message}"); return false; }
-            catch (PathTooLongException ptlEx) { _ui.DisplayError($"  Error: Resulting path for '{relativePath}' is too long. Skipping. {ptlEx.Message}"); return false; }
-            catch (Exception pathEx) { _ui.DisplayError($"  Error resolving path for '{relativePath}'. Skipping. {pathEx.Message}"); return false; }
-
-            try
-            {
-                string? targetDir = Path.GetDirectoryName(fullPath);
-                if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
-                {
-                    _ui.DisplayMessage($"  Creating directory: {targetDir}");
-                    Directory.CreateDirectory(targetDir);
-                }
-
-                _ui.DisplayMessage($"  Writing file: {relativePath}");
-                // Use WriteAllText which handles overwriting existing files.
-                // Ensure UTF-8 encoding without BOM for compatibility, matching the exporter.
-                File.WriteAllText(fullPath, content, new UTF8Encoding(false));
-                return true; // Success
-            }
-            catch (UnauthorizedAccessException ex) { _ui.DisplayError($"  Error: Access denied writing file '{relativePath}'. Skipping. {ex.Message}"); }
-            catch (DirectoryNotFoundException ex) { _ui.DisplayError($"  Error: Could not find part of the path for '{relativePath}'. Directory creation might have failed. Skipping. {ex.Message}"); }
-            catch (IOException ex) { _ui.DisplayError($"  Error: I/O error writing file '{relativePath}'. Skipping. {ex.Message}"); }
-            catch (Exception ex) { _ui.DisplayError($"  Error: Unexpected error writing file '{relativePath}'. Skipping. {ex.Message}"); }
-
-            return false; // Failed
-        }
-    }
-}
-
-// === End File: Core/FileSystemImporter.cs ===
-
-// === Start File: Core/IExporter.cs ===
-
-
-namespace AiCodeShareTool.Core
-{
-    /// <summary>
-    /// Defines the contract for exporting project files.
-    /// The implementation will use the currently active language profile.
-    /// </summary>
-    public interface IExporter
-    {
-        /// <summary>
-        /// Exports files from a project directory to a specified output file,
-        /// using the currently active language profile configuration.
-        /// </summary>
-        /// <param name="projectDirectory">The root directory of the project to export.</param>
-        /// <param name="exportFilePath">The path to the file where the exported content will be saved.</param>
-        void Export(string projectDirectory, string exportFilePath);
-    }
-}
-
-// === End File: Core/IExporter.cs ===
-
-// === Start File: Core/IImporter.cs ===
-
-
-namespace AiCodeShareTool.Core
-{
-    /// <summary>
-    /// Defines the contract for importing code from a structured file.
-    /// </summary>
-    public interface IImporter
-    {
-        /// <summary>
-        /// Imports files from a specified input file into a target project directory.
-        /// </summary>
-        /// <param name="projectDirectory">The root directory where the imported files will be placed.</param>
-        /// <param name="importFilePath">The path to the file containing the code to import.</param>
-        void Import(string projectDirectory, string importFilePath);
-    }
-}
-
-// === End File: Core/IImporter.cs ===
-
-// === Start File: Program.cs ===
-
-
-using AiCodeShareTool.UI;
-using AiCodeShareTool.Configuration; // Need this for ConfigurationService
-
-namespace AiCodeShareTool
-{
-    internal static class Program
-    {
-        /// <summary>
-        ///  The main entry point for the application.
-        /// </summary>
-        [STAThread] // Required for Windows Forms UI elements like dialogs
-        static void Main()
-        {
-            // To customize application configuration such as set high DPI settings or default font,
-            // see https://aka.ms/applicationconfiguration.
-            ApplicationConfiguration.Initialize();
-
-            // --- Dependency Setup ---
-            // Create instances of services and components
-            var appState = new ApplicationState(); // Still useful for paths
-            var configService = new InMemoryConfigurationService(); // Create the config service
-             // Set initial active profile in state if needed, or rely on service default
-             appState.ActiveLanguageProfileName = configService.GetActiveProfile().Name;
-
-             // Pass dependencies to the form constructor
-            var mainForm = new MainForm(appState, configService);
-            // --- End Dependency Setup ---
-
-
-            // Run the application using the main form
-            Application.Run(mainForm);
-        }
-    }
-}
-
-// === End File: Program.cs ===
-
 // === Start File: README.md ===
 
 
 # AiCodeShareTool
+
+**Disclaimer:** This program was developed entirely by the Gemini 2.5 Pro language model from Google AI, based on a series of prompts defining requirements and requesting code generation and modifications.
 
 A simple Windows Forms application to export the text-based files from a project directory into a single, structured text file (suitable for sharing with AI models) and to import such a file back into a directory structure.
 
@@ -987,24 +486,32 @@ A simple Windows Forms application to export the text-based files from a project
 *   **Export:**
     *   Select a project root directory.
     *   Select an output text file path.
-    *   **Language Profiles:** Select a configuration profile (e.g., ".NET", "Python", "Generic Text") to control which files are included.
+    *   **Language Profiles:** Select a configuration profile (e.g., ".NET", "Python", "Generic Text") to control which files are included. Profiles are loaded from `language_profiles.json` next to the executable.
         *   Each profile defines specific file search patterns (e.g., `*.cs`, `*.py`).
         *   Each profile defines blacklisted file extensions and specific filenames to exclude.
     *   Recursively finds files based on the selected profile's patterns.
     *   Excludes common unwanted folders globally (`bin`, `obj`, `.vs`, `.git`, `node_modules`).
+    *   **Preview:** Button to show a list of files that *will* be exported based on current settings *before* performing the full export.
+    *   **Character Count:** Displays the total number of characters exported after a successful export (or copy).
     *   Writes all found file contents into the output file, delimited by standard markers indicating the relative path.
+    *   **Copy to Clipboard:** Button to perform the export directly to the system clipboard instead of saving to a file.
 *   **Import:**
     *   Select a target root directory (where the project structure should be recreated).
     *   Select the structured text file to import from (format is language-agnostic).
+    *   **Backup Option:** Prompts the user before import if they want to create a `.zip` backup of the target directory first.
     *   Parses the file based on the start/end file markers.
     *   Recreates the directory structure under the target directory.
-    *   Writes the content for each file found in the import file.
+    *   Writes the content for each file found in the import file. Existing files are overwritten.
     *   Includes basic security checks to prevent writing outside the target directory.
 *   **GUI:**
-    *   Simple Windows Forms interface.
+    *   Simple Windows Forms interface with Menu Bar.
     *   Uses standard file/folder browse dialogs.
     *   Dropdown to select the Language Profile for export.
     *   Displays status messages, warnings, and errors in a text area.
+    *   **Clear Status:** Button to clear the status message area.
+    *   **Persistence:** Remembers the last used project directory, export/import file paths, and selected language profile between sessions.
+    *   **Drag and Drop:** Allows dragging folders onto the "Project Directory" field and text files onto the "Export File Path" and "Import File Path" fields.
+    *   **Tooltips:** Hover text explaining the purpose of buttons and inputs.
 
 ## Building and Running
 
@@ -1015,1106 +522,66 @@ A simple Windows Forms application to export the text-based files from a project
 
 ## Usage
 
-1.  **Project Directory:** Click "Browse..." to select the root folder of the project you want to export from or import into.
-2.  **Export File Path:** Click "Browse..." to select the `.txt` file where the exported code should be saved.
-3.  **Import File Path:** Click "Browse..." to select the `.txt` file containing the code to be imported.
-4.  **Language Profile:** Select the appropriate profile from the dropdown *before* exporting. This determines which files are included.
-5.  **Click "Export Project":** To gather files from the Project Directory (using the selected Language Profile) and save them to the Export File Path.
-6.  **Click "Import Code":** To read the Import File Path and recreate the files/folders within the Project Directory. This operation ignores the selected language profile as the file format dictates the content.
-7.  Observe the status messages in the text area below the buttons.
+1.  **Project Directory:** Click "Browse..." or drag and drop a folder to select the root folder of the project you want to export from or import into.
+2.  **Export File Path:** Click "Browse..." or drag and drop a `.txt` file to select the file where the exported code should be saved (used by "Export Project" button).
+3.  **Import File Path:** Click "Browse..." or drag and drop a `.txt` file to select the file containing the code to be imported.
+4.  **Language Profile:** Select the appropriate profile from the dropdown *before* exporting or previewing. This determines which files are included. Profiles are loaded from `language_profiles.json`. Use **File -> Reload Profiles** to load external changes.
+5.  **Click "Preview Export":** (Optional) To see a list of files that will be included in the export based on the current Project Directory and selected Language Profile.
+6.  **Click "Export Project":** To gather files from the Project Directory (using the selected Language Profile) and save them to the Export File Path. The character count will be shown in the status area upon completion.
+7.  **Click "Copy to Clipboard":** To gather files from the Project Directory (using the selected Language Profile) and copy the resulting formatted text directly to the clipboard.
+8.  **Click "Import Code":** To read the Import File Path and recreate the files/folders within the Project Directory. You will be asked if you want to create a backup first. **This operation WILL OVERWRITE existing files.** It ignores the selected language profile as the file format dictates the content.
+9.  Observe the status messages in the text area below the buttons. Click "Clear" to clear the status area.
+10. Use the **File** menu to Reload Profiles or Exit. Use the **Help** menu for basic application info.
 
 ## Configuration
 
-*   **Language Profiles:** Edit the `InitializeProfiles` method in `Configuration/InMemoryConfigurationService.cs` to:
-    *   Modify existing profiles (search patterns, blacklists).
-    *   Add new profiles for other languages or project types.
-*   **Global Exclusions:** Edit the list of excluded folders in `Core/FileSystemExporter.cs` (`excludedFolders` variable within the `Export` method) if needed.
+*   **Language Profiles:** Edit the `language_profiles.json` file located in the same directory as the application's executable (`.exe`). You can:
+    *   Modify existing profiles (change `Name`, `SearchPatterns`, `BlacklistedExtensions`, `BlacklistedFileNames`).
+    *   Add new profiles by copying an existing structure and customizing it.
+    *   Delete profiles by removing their JSON object from the list.
+    *   Use **File -> Reload Profiles** in the application to load changes without restarting.
+    *   *Note:* Ensure JSON syntax is correct after editing. Use a JSON validator if unsure.
+*   **Global Exclusions:** Edit the list of excluded folders in `Core/FileSystemExporter.cs` (`GetExcludedFolders` method) if needed. Recompilation is required for changes here.
 *   **File Format:** Marker constants are defined in `Configuration/ExportSettings.cs`.
 
+## AI Interaction Format (System Instruction)
+
+This tool is designed to facilitate code sharing with AI models. The AI used to generate this tool (Gemini 1.5 Pro) expects interactions using the following format when requesting code updates or generation:
+
+```text
+Output Only New/Edited Files: Your response MUST only contain files that are newly created or have been edited/modified according to the current request. Do NOT include files requested in previous interactions if they remain unchanged.
+
+Encapsulation: All code for the new or edited files MUST be contained within one single markdown code block (e.g., ```csharp ... ``` or ```xml ... ``` as appropriate). Do NOT add any introductory or concluding text outside of this code block unless explicitly requested.
+
+File Markers: Each individual file's content included in the output MUST be clearly delineated by specific start and end markers.
+
+Start Marker Format: Before the content of each file, you MUST include a line exactly like this:
+
+
+// === Start* File: {relativePath} ===
+
+End Marker Format: After the content of each file, you MUST include a line exactly like this:
+
+
+// === End* File: {relativePath} ===
+
+
+Path Requirement: The `{relativePath}` placeholder in the markers MUST be the correct relative path of the file *from the project's base directory*, even if it's an existing file being modified.
+    *   Use forward slashes (/) as directory separators.
+    *   Examples: `MyClass.cs`, `Services/UserService.cs`, `Models/Order.cs`.
+
+Content Placement: The complete and unmodified content of the new or edited file MUST be placed between its corresponding Start File and End File markers.
+
+Spacing:
+    *   Include exactly one blank line immediately after the Start File marker line (before the file content).
+    *   Include exactly one blank line immediately before the End File marker line (after the file content).
+    *   Include exactly one blank line immediately after the End File marker line (before the next Start File marker, or the end of the code block).
+
+Omission of Unchanged Files: Files provided in previous responses that are not explicitly part of the changes requested in the current prompt MUST be omitted from the output block.
+
+No Extra Text: Do not include any other text or comments between the files, other than the specified markers and blank lines.
+
+
+Adhering to this format allows the AI to correctly process code changes and maintain project context across multiple interactions.
+
 // === End File: README.md ===
-
-// === Start File: UI/ConsoleUI.cs ===
-
-
-using System.Text;
-
-namespace AiCodeShareTool.UI
-{
-    /// <summary>
-    /// Implements the IUserInterface using the console and Windows Forms dialogs.
-    /// NOTE: This class is no longer used by the main WinForms application
-    /// but is kept for potential future CLI usage or reference.
-    /// It does NOT support the new features like language profile selection.
-    /// </summary>
-    public class ConsoleUI : IUserInterface
-    {
-        public ConsoleUI()
-        {
-            // Ensure console can display paths correctly, especially on Windows
-            try { Console.OutputEncoding = Encoding.UTF8; } catch { /* Ignore if fails */ }
-        }
-
-        // --- Methods no longer directly applicable or need updates ---
-        // public char ShowMainMenu() { ... } // Needs update for profile selection
-        // public char AskChangePathChoice() { ... }
-
-        public string? GetDirectoryPath(string description, string? currentPath, bool askUseCurrent = true)
-        {
-            // The core logic using FolderBrowserDialog remains valid if STAThread is ensured
-            if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
-            {
-                if (AskToUseCurrentPath("directory", currentPath))
-                {
-                    if (Directory.Exists(currentPath)) return currentPath;
-                    DisplayWarning("Current directory no longer exists. Please select a new one.");
-                }
-                else
-                {
-                    DisplayMessage("Proceeding to select a new directory...");
-                }
-            }
-
-            // Ensure STAThread for console apps using WinForms dialogs
-            string? selectedPath = null;
-            Thread staThread = new Thread(() =>
-            {
-                try
-                {
-                    using (var dialog = new FolderBrowserDialog())
-                    {
-                        dialog.Description = description;
-                        dialog.UseDescriptionForTitle = true;
-                        dialog.ShowNewFolderButton = true;
-                        SetInitialDialogPath(dialog, currentPath); // Helper method needs context or rework
-
-                        Console.WriteLine($"\nPlease select the directory: {description} (Dialog should appear)");
-                        DialogResult result = dialog.ShowDialog(); // Requires STAThread
-
-                        if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.SelectedPath))
-                        {
-                            selectedPath = dialog.SelectedPath;
-                            Console.WriteLine($"Selected Path: {selectedPath}"); // Feedback in console
-                        }
-                        else
-                        {
-                            Console.WriteLine("Operation cancelled or no folder selected."); // Feedback
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                     Console.WriteLine($"Error showing folder browser: {ex.Message}");
-                }
-            });
-            staThread.SetApartmentState(ApartmentState.STA);
-            staThread.Start();
-            staThread.Join(); // Wait for the dialog thread to complete
-
-            if(selectedPath == null) DisplayWarning("Directory selection failed or was cancelled.");
-
-            return selectedPath; // Return result from STA thread
-        }
-
-         public string? GetSaveFilePath(string title, string filter, string defaultExt, string? currentPath, bool askUseCurrent = true)
-        {
-            // Similar STAThread requirement as GetDirectoryPath
-            if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
-            {
-                if (AskToUseCurrentPath("file path", currentPath)) return currentPath;
-                else DisplayMessage("Proceeding to select a new file path...");
-            }
-
-            string? selectedPath = null;
-             Thread staThread = new Thread(() =>
-             {
-                 try
-                 {
-                     using (var dialog = new SaveFileDialog())
-                     {
-                         dialog.Title = title;
-                         dialog.Filter = filter;
-                         dialog.DefaultExt = defaultExt;
-                         dialog.AddExtension = true;
-                         dialog.OverwritePrompt = true;
-                         SetInitialDialogPath(dialog, currentPath);
-
-                         Console.WriteLine($"\nPlease select the file: {title} (Dialog should appear)");
-                         DialogResult result = dialog.ShowDialog(); // Requires STAThread
-
-                         if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
-                         {
-                             selectedPath = dialog.FileName;
-                             Console.WriteLine($"Selected File: {selectedPath}");
-                         }
-                         else
-                         {
-                             Console.WriteLine("Operation cancelled or no file selected.");
-                         }
-                     }
-                 }
-                  catch (Exception ex)
-                 {
-                      Console.WriteLine($"Error showing save file dialog: {ex.Message}");
-                 }
-             });
-             staThread.SetApartmentState(ApartmentState.STA);
-             staThread.Start();
-             staThread.Join();
-
-             if(selectedPath == null) DisplayWarning("Save file selection failed or was cancelled.");
-             return selectedPath;
-        }
-
-        public string? GetOpenFilePath(string title, string filter, string? currentPath, bool askUseCurrent = true)
-        {
-             // Similar STAThread requirement as GetDirectoryPath
-             if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
-            {
-                if (AskToUseCurrentPath("file", currentPath))
-                {
-                     if (File.Exists(currentPath)) return currentPath;
-                     DisplayWarning("Current file no longer exists. Please select a new one.");
-                }
-                 else DisplayMessage("Proceeding to select a new file path...");
-            }
-
-             string? selectedPath = null;
-             Thread staThread = new Thread(() =>
-             {
-                 try
-                 {
-                     using (var dialog = new OpenFileDialog())
-                     {
-                         dialog.Title = title;
-                         dialog.Filter = filter;
-                         dialog.CheckFileExists = true;
-                         dialog.Multiselect = false;
-                         SetInitialDialogPath(dialog, currentPath);
-
-                         Console.WriteLine($"\nPlease select the file: {title} (Dialog should appear)");
-                         DialogResult result = dialog.ShowDialog(); // Requires STAThread
-
-                         if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
-                         {
-                             selectedPath = dialog.FileName;
-                             Console.WriteLine($"Selected File: {selectedPath}");
-                         }
-                         else
-                         {
-                              Console.WriteLine("Operation cancelled or no file selected.");
-                         }
-                     }
-                 }
-                  catch (Exception ex)
-                 {
-                      Console.WriteLine($"Error showing open file dialog: {ex.Message}");
-                 }
-             });
-             staThread.SetApartmentState(ApartmentState.STA);
-             staThread.Start();
-             staThread.Join();
-
-             if(selectedPath == null) DisplayWarning("Open file selection failed or was cancelled.");
-             return selectedPath;
-        }
-
-
-        private bool AskToUseCurrentPath(string pathType, string path)
-        {
-            Console.Write($"Current {pathType}: {path}. Use this? (Y/N): ");
-            var key = Console.ReadKey(intercept: true);
-            Console.WriteLine(); // New line after input
-            if (key.Key == ConsoleKey.Y)
-            {
-                DisplayMessage($"Using current {pathType}.");
-                return true;
-            }
-            if (key.Key != ConsoleKey.N) { DisplayWarning("Invalid input. Assuming 'No'."); }
-            return false;
-        }
-
-        // This helper needs careful handling in STA thread context or rework
-        private void SetInitialDialogPath(CommonDialog dialog, string? currentPath)
-        {
-            if (string.IsNullOrEmpty(currentPath)) return;
-             try
-            {
-                 // Basic logic, might need refinement for STA context if it accesses UI elements indirectly
-                string? initialDir = null;
-                string? initialFileName = null;
-
-                 if (Directory.Exists(currentPath)) initialDir = currentPath;
-                 else {
-                     initialDir = Path.GetDirectoryName(currentPath);
-                     initialFileName = Path.GetFileName(currentPath);
-                 }
-
-                if (dialog is FileDialog fileDialog)
-                {
-                    if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir)) fileDialog.InitialDirectory = initialDir;
-                    if (!string.IsNullOrEmpty(initialFileName)) fileDialog.FileName = initialFileName;
-                }
-                else if (dialog is FolderBrowserDialog folderDialog)
-                {
-                     if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir)) folderDialog.SelectedPath = initialDir;
-                }
-            }
-             catch (Exception ex) // Catch broad errors
-            {
-                 // Log to console instead of UI warning
-                 Console.WriteLine($"Warning: Could not set initial path for dialog: {ex.Message}");
-            }
-        }
-
-
-        public void DisplayMessage(string message)
-        {
-            Console.WriteLine(message);
-        }
-
-        public void DisplayWarning(string message)
-        {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"Warning: {message}");
-            Console.ResetColor();
-        }
-
-        public void DisplayError(string message)
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"Error: {message}");
-            Console.ResetColor();
-        }
-
-        public void DisplaySuccess(string message)
-        {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine(message);
-            Console.ResetColor();
-        }
-
-         public void ClearOutput()
-        {
-             // Best effort for console
-             try { Console.Clear(); } catch (IOException) { /* May fail if console redirected */ }
-        }
-    }
-}
-
-// === End File: UI/ConsoleUI.cs ===
-
-// === Start File: UI/IUserInterface.cs ===
-
-
-namespace AiCodeShareTool
-{
-    /// <summary>
-    /// Defines the contract for user interactions.
-    /// This interface is now slightly adapted for a GUI context.
-    /// </summary>
-    public interface IUserInterface
-    {
-        // --- Methods no longer applicable in GUI context ---
-        // char ShowMainMenu(); // Replaced by direct button interaction
-        // char AskChangePathChoice(); // Replaced by browse buttons
-        // void WaitForEnter(); // Not needed in event-driven GUI
-
-        /// <summary>
-        /// Prompts the user to select a directory.
-        /// </summary>
-        /// <param name="description">The description to show the user.</param>
-        /// <param name="currentPath">The currently stored path for this type, if any, used as initial directory.</param>
-        /// <param name="askUseCurrent">This parameter is largely ignored in GUI, dialog always shown.</param>
-        /// <returns>The selected directory path, or null if cancelled.</returns>
-        string? GetDirectoryPath(string description, string? currentPath, bool askUseCurrent = true);
-
-        /// <summary>
-        /// Prompts the user to select a file path for saving.
-        /// </summary>
-        /// <param name="title">The title for the dialog.</param>
-        /// <param name="filter">The file filter string (e.g., "Text Files|*.txt").</param>
-        /// <param name="defaultExt">The default file extension (e.g., "txt").</param>
-        /// <param name="currentPath">The currently stored path for this type, if any, used for initial dir/filename.</param>
-        /// <param name="askUseCurrent">This parameter is largely ignored in GUI, dialog always shown.</param>
-        /// <returns>The selected file path, or null if cancelled.</returns>
-        string? GetSaveFilePath(string title, string filter, string defaultExt, string? currentPath, bool askUseCurrent = true);
-
-        /// <summary>
-        /// Prompts the user to select an existing file path for opening.
-        /// </summary>
-        /// <param name="title">The title for the dialog.</param>
-        /// <param name="filter">The file filter string (e.g., "Text Files|*.txt").</param>
-        /// <param name="currentPath">The currently stored path for this type, if any, used for initial dir/filename.</param>
-        /// <param name="askUseCurrent">This parameter is largely ignored in GUI, dialog always shown.</param>
-        /// <returns>The selected file path, or null if cancelled.</returns>
-        string? GetOpenFilePath(string title, string filter, string? currentPath, bool askUseCurrent = true);
-
-        /// <summary>
-        /// Displays a standard informational message to the user (e.g., in a status area).
-        /// </summary>
-        /// <param name="message">The message to display.</param>
-        void DisplayMessage(string message);
-
-        /// <summary>
-        /// Displays a warning message to the user (e.g., highlighted in a status area).
-        /// </summary>
-        /// <param name="message">The warning message to display.</param>
-        void DisplayWarning(string message);
-
-        /// <summary>
-        /// Displays an error message to the user (e.g., highlighted in a status area).
-        /// </summary>
-        /// <param name="message">The error message to display.</param>
-        void DisplayError(string message);
-
-        /// <summary>
-        /// Displays a success message to the user (e.g., highlighted in a status area).
-        /// </summary>
-        /// <param name="message">The success message to display.</param>
-        void DisplaySuccess(string message);
-
-        /// <summary>
-        /// Clears any previous output in the status area.
-        /// </summary>
-        void ClearOutput();
-    }
-}
-
-// === End File: UI/IUserInterface.cs ===
-
-// === Start File: UI/MainForm.cs ===
-
-
-using AiCodeShareTool.Configuration;
-using AiCodeShareTool.Core;
-
-namespace AiCodeShareTool.UI
-{
-    public partial class MainForm : Form
-    {
-        private readonly ApplicationState _appState;
-        private readonly IConfigurationService _configService;
-        private readonly IUserInterface _ui;
-        private readonly IExporter _exporter;
-        private readonly IImporter _importer;
-
-        // Constructor now accepts ApplicationState and IConfigurationService
-        public MainForm(ApplicationState appState, IConfigurationService configService)
-        {
-            InitializeComponent();
-
-            // Store dependencies
-            _appState = appState ?? throw new ArgumentNullException(nameof(appState));
-            _configService = configService ?? throw new ArgumentNullException(nameof(configService));
-
-            // Initialize components that depend on the services
-            _ui = new WinFormsUI(this, this.rtbStatus);
-            _exporter = new FileSystemExporter(_ui, _configService); // Pass config service to exporter
-            _importer = new FileSystemImporter(_ui); // Importer doesn't need config service
-
-            // Load initial paths and populate profile dropdown
-            LoadInitialPaths();
-            PopulateLanguageProfiles();
-            SelectInitialProfile();
-        }
-
-        private void LoadInitialPaths()
-        {
-            // In a real app, load from persisted settings
-            txtProjectDir.Text = _appState.CurrentProjectDirectory ?? "";
-            txtExportPath.Text = _appState.CurrentExportFilePath ?? "";
-            txtImportPath.Text = _appState.CurrentImportFilePath ?? "";
-        }
-
-         private void PopulateLanguageProfiles()
-         {
-            var profiles = _configService.GetAvailableProfiles();
-            cmbLanguageProfile.Items.Clear();
-            cmbLanguageProfile.DisplayMember = nameof(LanguageProfile.Name); // Show the Name property
-            foreach (var profile in profiles)
-            {
-                cmbLanguageProfile.Items.Add(profile);
-            }
-         }
-
-         private void SelectInitialProfile()
-         {
-             // Try selecting based on stored state, fallback to service default
-            string profileToSelect = _appState.ActiveLanguageProfileName ?? _configService.DefaultProfileName;
-
-            for (int i = 0; i < cmbLanguageProfile.Items.Count; i++)
-            {
-                if (cmbLanguageProfile.Items[i] is LanguageProfile profile && profile.Name.Equals(profileToSelect, StringComparison.OrdinalIgnoreCase))
-                {
-                    cmbLanguageProfile.SelectedIndex = i;
-                    // Update the active profile in the service to match the UI selection
-                    _configService.SetActiveProfile(profile.Name);
-                    _ui.DisplayMessage($"Initial language profile set to: {profile.Name}");
-                    return;
-                }
-            }
-
-            // Fallback if stored name not found (shouldn't happen with default logic)
-             if (cmbLanguageProfile.Items.Count > 0)
-             {
-                cmbLanguageProfile.SelectedIndex = 0;
-                if(cmbLanguageProfile.SelectedItem is LanguageProfile selectedProfile)
-                {
-                     _configService.SetActiveProfile(selectedProfile.Name);
-                     _ui.DisplayMessage($"Initial language profile defaulted to: {selectedProfile.Name}");
-                }
-             }
-         }
-
-         private void cmbLanguageProfile_SelectedIndexChanged(object sender, EventArgs e)
-        {
-             if (cmbLanguageProfile.SelectedItem is LanguageProfile selectedProfile)
-             {
-                bool success = _configService.SetActiveProfile(selectedProfile.Name);
-                 _appState.ActiveLanguageProfileName = selectedProfile.Name; // Update state
-                if(success)
-                {
-                    _ui.DisplayMessage($"Active language profile changed to: {selectedProfile.Name}");
-                } else {
-                    // This shouldn't happen if the item came from the list
-                     _ui.DisplayWarning($"Could not activate selected profile: {selectedProfile.Name}");
-                }
-             }
-        }
-
-
-        private void btnBrowseProject_Click(object sender, EventArgs e)
-        {
-            string? selectedPath = _ui.GetDirectoryPath("Select Project Directory", _appState.CurrentProjectDirectory);
-            if (selectedPath != null)
-            {
-                _appState.CurrentProjectDirectory = selectedPath;
-                txtProjectDir.Text = selectedPath;
-                _ui.DisplayMessage($"Project Directory set to: {selectedPath}");
-            }
-        }
-
-        private void btnBrowseExport_Click(object sender, EventArgs e)
-        {
-            // Use export path state for initial dir/file
-            string? selectedPath = _ui.GetSaveFilePath("Select Export Output File", "Text Files|*.txt|All Files|*.*", "txt", _appState.CurrentExportFilePath);
-             if (selectedPath != null)
-            {
-                _appState.CurrentExportFilePath = selectedPath;
-                txtExportPath.Text = selectedPath;
-                 _ui.DisplayMessage($"Export File Path set to: {selectedPath}");
-
-                // Convenience: If import path is empty, set it to the same file
-                if (string.IsNullOrWhiteSpace(txtImportPath.Text))
-                {
-                     _appState.CurrentImportFilePath = selectedPath;
-                     txtImportPath.Text = selectedPath;
-                      _ui.DisplayMessage($"Import File Path also updated for convenience.");
-                }
-            }
-        }
-
-        private void btnBrowseImport_Click(object sender, EventArgs e)
-        {
-             // Use import path state for initial dir/file
-            string? selectedPath = _ui.GetOpenFilePath("Select Import Code File", "Text Files|*.txt|All Files|*.*", _appState.CurrentImportFilePath);
-             if (selectedPath != null)
-            {
-                _appState.CurrentImportFilePath = selectedPath;
-                txtImportPath.Text = selectedPath;
-                 _ui.DisplayMessage($"Import File Path set to: {selectedPath}");
-            }
-        }
-
-        private async void btnExport_Click(object sender, EventArgs e)
-        {
-            // Ensure state matches UI just before action
-            _appState.CurrentProjectDirectory = txtProjectDir.Text;
-            _appState.CurrentExportFilePath = txtExportPath.Text;
-             // Active profile is already set by combobox handler
-
-            if (string.IsNullOrWhiteSpace(_appState.CurrentProjectDirectory) || string.IsNullOrWhiteSpace(_appState.CurrentExportFilePath))
-            {
-                _ui.DisplayError("Please select both a Project Directory and an Export File Path before exporting.");
-                return;
-            }
-             if (_configService.GetActiveProfile() == null) // Sanity check
-             {
-                 _ui.DisplayError("No language profile is selected. Please select one from the dropdown.");
-                 return;
-             }
-
-            // Disable buttons during operation
-            SetBusyState(true);
-
-            // Run export potentially long running task in background
-            try
-            {
-                 // Using Task.Run to avoid blocking the UI thread
-                 // Exporter now uses the active profile from the injected config service
-                 await Task.Run(() => _exporter.Export(_appState.CurrentProjectDirectory, _appState.CurrentExportFilePath));
-            }
-            catch(Exception ex)
-            {
-                 // Catch unexpected errors from the Task wrapper itself if any
-                _ui.DisplayError($"An unexpected error occurred during the export task: {ex.Message}");
-            }
-            finally
-            {
-                 // Re-enable buttons
-                SetBusyState(false);
-            }
-        }
-
-        private async void btnImport_Click(object sender, EventArgs e)
-        {
-             // Ensure state matches UI just before action
-            _appState.CurrentProjectDirectory = txtProjectDir.Text;
-            _appState.CurrentImportFilePath = txtImportPath.Text; // Use import path field
-
-            if (string.IsNullOrWhiteSpace(_appState.CurrentProjectDirectory) || string.IsNullOrWhiteSpace(_appState.CurrentImportFilePath))
-            {
-                _ui.DisplayError("Please select both a Project Directory and an Import File Path before importing.");
-                return;
-            }
-
-            // Ask for confirmation before potentially overwriting files
-            var confirmResult = MessageBox.Show(
-                $"This will import files from:\n{_appState.CurrentImportFilePath}\n\nInto directory:\n{_appState.CurrentProjectDirectory}\n\nExisting files with the same name WILL BE OVERWRITTEN.\n\nAre you sure you want to proceed?",
-                "Confirm Import",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-
-            if (confirmResult == DialogResult.No)
-            {
-                _ui.DisplayWarning("Import cancelled by user.");
-                return;
-            }
-
-            // Disable buttons during operation
-            SetBusyState(true);
-
-             // Run import potentially long running task in background
-            try
-            {
-                 // Using Task.Run to avoid blocking the UI thread
-                 await Task.Run(() => _importer.Import(_appState.CurrentProjectDirectory, _appState.CurrentImportFilePath));
-            }
-            catch(Exception ex)
-            {
-                // Catch unexpected errors from the Task wrapper itself if any
-                 _ui.DisplayError($"An unexpected error occurred during the import task: {ex.Message}");
-            }
-            finally
-            {
-                 // Re-enable buttons
-                SetBusyState(false);
-            }
-        }
-
-        private void SetBusyState(bool busy)
-        {
-            // Use Invoke if called from a non-UI thread, though here it's from UI events
-            this.Invoke((MethodInvoker)delegate {
-                btnExport.Enabled = !busy;
-                btnImport.Enabled = !busy;
-                btnBrowseProject.Enabled = !busy;
-                btnBrowseExport.Enabled = !busy;
-                btnBrowseImport.Enabled = !busy;
-                txtProjectDir.Enabled = !busy;
-                txtExportPath.Enabled = !busy;
-                txtImportPath.Enabled = !busy;
-                 cmbLanguageProfile.Enabled = !busy; // Disable profile selection during operation
-
-                // Optional: Show a progress indicator like a marquee progress bar
-                 progressBar.Visible = busy;
-                 progressBar.Style = busy ? ProgressBarStyle.Marquee : ProgressBarStyle.Blocks;
-                 progressBar.Value = busy ? 50 : 0; // Marquee ignores value but set something
-            });
-        }
-    }
-}
-
-// === End File: UI/MainForm.cs ===
-
-// === Start File: UI/MainForm.Designer.cs ===
-
-
-namespace AiCodeShareTool.UI
-{
-    partial class MainForm
-    {
-        /// <summary>
-        /// Required designer variable.
-        /// </summary>
-        private System.ComponentModel.IContainer components = null;
-
-        /// <summary>
-        /// Clean up any resources being used.
-        /// </summary>
-        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing && (components != null))
-            {
-                components.Dispose();
-            }
-            base.Dispose(disposing);
-        }
-
-        #region Windows Form Designer generated code
-
-        /// <summary>
-        /// Required method for Designer support - do not modify
-        /// the contents of this method with the code editor.
-        /// </summary>
-        private void InitializeComponent()
-        {
-            lblProjectDir = new Label();
-            txtProjectDir = new TextBox();
-            btnBrowseProject = new Button();
-            lblExportPath = new Label();
-            txtExportPath = new TextBox();
-            btnBrowseExport = new Button();
-            lblImportPath = new Label();
-            txtImportPath = new TextBox();
-            btnBrowseImport = new Button();
-            btnExport = new Button();
-            btnImport = new Button();
-            rtbStatus = new RichTextBox();
-            lblStatus = new Label();
-            progressBar = new ProgressBar();
-            lblLanguageProfile = new Label();
-            cmbLanguageProfile = new ComboBox();
-            SuspendLayout();
-            // 
-            // lblProjectDir
-            // 
-            lblProjectDir.AutoSize = true;
-            lblProjectDir.Location = new Point(12, 15);
-            lblProjectDir.Name = "lblProjectDir";
-            lblProjectDir.Size = new Size(124, 20);
-            lblProjectDir.TabIndex = 0;
-            lblProjectDir.Text = "Project Directory:";
-            // 
-            // txtProjectDir
-            // 
-            txtProjectDir.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtProjectDir.Location = new Point(142, 12);
-            txtProjectDir.Name = "txtProjectDir";
-            txtProjectDir.Size = new Size(525, 27);
-            txtProjectDir.TabIndex = 1;
-            // 
-            // btnBrowseProject
-            // 
-            btnBrowseProject.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnBrowseProject.Location = new Point(673, 11);
-            btnBrowseProject.Name = "btnBrowseProject";
-            btnBrowseProject.Size = new Size(94, 29);
-            btnBrowseProject.TabIndex = 2;
-            btnBrowseProject.Text = "Browse...";
-            btnBrowseProject.UseVisualStyleBackColor = true;
-            btnBrowseProject.Click += btnBrowseProject_Click;
-            // 
-            // lblExportPath
-            // 
-            lblExportPath.AutoSize = true;
-            lblExportPath.Location = new Point(12, 50);
-            lblExportPath.Name = "lblExportPath";
-            lblExportPath.Size = new Size(116, 20);
-            lblExportPath.TabIndex = 3;
-            lblExportPath.Text = "Export File Path:";
-            // 
-            // txtExportPath
-            // 
-            txtExportPath.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtExportPath.Location = new Point(142, 47);
-            txtExportPath.Name = "txtExportPath";
-            txtExportPath.Size = new Size(525, 27);
-            txtExportPath.TabIndex = 4;
-            // 
-            // btnBrowseExport
-            // 
-            btnBrowseExport.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnBrowseExport.Location = new Point(673, 46);
-            btnBrowseExport.Name = "btnBrowseExport";
-            btnBrowseExport.Size = new Size(94, 29);
-            btnBrowseExport.TabIndex = 5;
-            btnBrowseExport.Text = "Browse...";
-            btnBrowseExport.UseVisualStyleBackColor = true;
-            btnBrowseExport.Click += btnBrowseExport_Click;
-            // 
-            // lblImportPath
-            // 
-            lblImportPath.AutoSize = true;
-            lblImportPath.Location = new Point(12, 85);
-            lblImportPath.Name = "lblImportPath";
-            lblImportPath.Size = new Size(117, 20);
-            lblImportPath.TabIndex = 6;
-            lblImportPath.Text = "Import File Path:";
-            // 
-            // txtImportPath
-            // 
-            txtImportPath.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtImportPath.Location = new Point(142, 82);
-            txtImportPath.Name = "txtImportPath";
-            txtImportPath.Size = new Size(525, 27);
-            txtImportPath.TabIndex = 7;
-            // 
-            // btnBrowseImport
-            // 
-            btnBrowseImport.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnBrowseImport.Location = new Point(673, 81);
-            btnBrowseImport.Name = "btnBrowseImport";
-            btnBrowseImport.Size = new Size(94, 29);
-            btnBrowseImport.TabIndex = 8;
-            btnBrowseImport.Text = "Browse...";
-            btnBrowseImport.UseVisualStyleBackColor = true;
-            btnBrowseImport.Click += btnBrowseImport_Click;
-            // 
-            // btnExport
-            // 
-            btnExport.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnExport.Location = new Point(12, 165);
-            btnExport.Name = "btnExport";
-            btnExport.Size = new Size(180, 35);
-            btnExport.TabIndex = 11;
-            btnExport.Text = "Export Project";
-            btnExport.UseVisualStyleBackColor = true;
-            btnExport.Click += btnExport_Click;
-            // 
-            // btnImport
-            // 
-            btnImport.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnImport.Location = new Point(198, 165);
-            btnImport.Name = "btnImport";
-            btnImport.Size = new Size(180, 35);
-            btnImport.TabIndex = 12;
-            btnImport.Text = "Import Code";
-            btnImport.UseVisualStyleBackColor = true;
-            btnImport.Click += btnImport_Click;
-            // 
-            // rtbStatus
-            // 
-            rtbStatus.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            rtbStatus.BackColor = SystemColors.Window;
-            rtbStatus.Location = new Point(12, 234);
-            rtbStatus.Name = "rtbStatus";
-            rtbStatus.ReadOnly = true;
-            rtbStatus.ScrollBars = RichTextBoxScrollBars.Vertical;
-            rtbStatus.Size = new Size(755, 235);
-            rtbStatus.TabIndex = 15;
-            rtbStatus.Text = "";
-            rtbStatus.LinkClicked += (sender, e) => {
-                try {
-                     if (e.LinkText != null) {
-                          System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.LinkText) { UseShellExecute = true });
-                     }
-                } catch (Exception ex) { /* Handle exceptions if needed */ MessageBox.Show($"Could not open link: {ex.Message}"); }
-            };
-            // 
-            // lblStatus
-            // 
-            lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(12, 211);
-            lblStatus.Name = "lblStatus";
-            lblStatus.Size = new Size(52, 20);
-            lblStatus.TabIndex = 14;
-            lblStatus.Text = "Status:";
-            // 
-            // progressBar
-            // 
-            progressBar.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            progressBar.Location = new Point(384, 169);
-            progressBar.MarqueeAnimationSpeed = 50;
-            progressBar.Name = "progressBar";
-            progressBar.Size = new Size(383, 28);
-            progressBar.Style = ProgressBarStyle.Marquee;
-            progressBar.TabIndex = 13;
-            progressBar.Visible = false;
-            // 
-            // lblLanguageProfile
-            // 
-            lblLanguageProfile.AutoSize = true;
-            lblLanguageProfile.Location = new Point(12, 124);
-            lblLanguageProfile.Name = "lblLanguageProfile";
-            lblLanguageProfile.Size = new Size(122, 20);
-            lblLanguageProfile.TabIndex = 9;
-            lblLanguageProfile.Text = "Language Profile:";
-            // 
-            // cmbLanguageProfile
-            // 
-            cmbLanguageProfile.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            cmbLanguageProfile.DropDownStyle = ComboBoxStyle.DropDownList;
-            cmbLanguageProfile.FormattingEnabled = true;
-            cmbLanguageProfile.Location = new Point(142, 121);
-            cmbLanguageProfile.Name = "cmbLanguageProfile";
-            cmbLanguageProfile.Size = new Size(625, 28);
-            cmbLanguageProfile.TabIndex = 10;
-            cmbLanguageProfile.SelectedIndexChanged += cmbLanguageProfile_SelectedIndexChanged;
-            // 
-            // MainForm
-            // 
-            AutoScaleDimensions = new SizeF(8F, 20F);
-            AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(779, 481);
-            Controls.Add(cmbLanguageProfile);
-            Controls.Add(lblLanguageProfile);
-            Controls.Add(progressBar);
-            Controls.Add(lblStatus);
-            Controls.Add(rtbStatus);
-            Controls.Add(btnImport);
-            Controls.Add(btnExport);
-            Controls.Add(btnBrowseImport);
-            Controls.Add(txtImportPath);
-            Controls.Add(lblImportPath);
-            Controls.Add(btnBrowseExport);
-            Controls.Add(txtExportPath);
-            Controls.Add(lblExportPath);
-            Controls.Add(btnBrowseProject);
-            Controls.Add(txtProjectDir);
-            Controls.Add(lblProjectDir);
-            MinimumSize = new Size(500, 450);
-            Name = "MainForm";
-            Text = "AI Code Share Tool";
-            ResumeLayout(false);
-            PerformLayout();
-        }
-
-        #endregion
-
-        private Label lblProjectDir;
-        private TextBox txtProjectDir;
-        private Button btnBrowseProject;
-        private Label lblExportPath;
-        private TextBox txtExportPath;
-        private Button btnBrowseExport;
-        private Label lblImportPath;
-        private TextBox txtImportPath;
-        private Button btnBrowseImport;
-        private Button btnExport;
-        private Button btnImport;
-        private RichTextBox rtbStatus;
-        private Label lblStatus;
-        private ProgressBar progressBar;
-        private Label lblLanguageProfile;
-        private ComboBox cmbLanguageProfile;
-    }
-}
-
-// === End File: UI/MainForm.Designer.cs ===
-
-// === Start File: UI/WinFormsUI.cs ===
-
-
-namespace AiCodeShareTool.UI
-{
-    /// <summary>
-    /// Implements IUserInterface using Windows Forms controls and dialogs.
-    /// Assumes it's running on the UI thread or handles marshalling.
-    /// </summary>
-    public class WinFormsUI : IUserInterface
-    {
-        private readonly Form _owner; // Owner form for dialogs
-        private readonly RichTextBox _statusOutput; // Target control for messages
-
-        public WinFormsUI(Form owner, RichTextBox statusOutput)
-        {
-            _owner = owner ?? throw new ArgumentNullException(nameof(owner));
-            _statusOutput = statusOutput ?? throw new ArgumentNullException(nameof(statusOutput));
-             _statusOutput.DetectUrls = true; // Make file paths clickable
-        }
-
-        public string? GetDirectoryPath(string description, string? currentPath, bool askUseCurrent = true)
-        {
-            // askUseCurrent is ignored, we always show the dialog for GUI
-            using (var dialog = new FolderBrowserDialog())
-            {
-                dialog.Description = description;
-                dialog.UseDescriptionForTitle = true; // More prominent title in some OS versions
-                dialog.ShowNewFolderButton = true;
-                SetInitialDialogPath(dialog, currentPath);
-
-                DialogResult result = dialog.ShowDialog(_owner); // Show modal to owner
-
-                if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.SelectedPath))
-                {
-                    return dialog.SelectedPath;
-                }
-                return null; // Cancelled or empty path
-            }
-        }
-
-        public string? GetSaveFilePath(string title, string filter, string defaultExt, string? currentPath, bool askUseCurrent = true)
-        {
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Title = title;
-                dialog.Filter = filter;
-                dialog.DefaultExt = defaultExt;
-                dialog.AddExtension = true;
-                dialog.OverwritePrompt = true; // Warn if overwriting existing file
-                SetInitialDialogPath(dialog, currentPath);
-
-                DialogResult result = dialog.ShowDialog(_owner);
-
-                if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
-                {
-                    return dialog.FileName;
-                }
-                return null;
-            }
-        }
-
-        public string? GetOpenFilePath(string title, string filter, string? currentPath, bool askUseCurrent = true)
-        {
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Title = title;
-                dialog.Filter = filter;
-                dialog.CheckFileExists = true; // Ensure the selected file exists
-                dialog.Multiselect = false;
-                SetInitialDialogPath(dialog, currentPath);
-
-                DialogResult result = dialog.ShowDialog(_owner);
-
-                if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
-                {
-                    return dialog.FileName;
-                }
-                return null;
-            }
-        }
-
-        private void SetInitialDialogPath(CommonDialog dialog, string? currentPath)
-        {
-            if (string.IsNullOrEmpty(currentPath)) return;
-
-            try
-            {
-                string? initialDir = null;
-                string? initialFileName = null;
-
-                 // Check if currentPath is a directory or a file path
-                if (Directory.Exists(currentPath)) // It's a directory path
-                {
-                    initialDir = currentPath;
-                }
-                else if (File.Exists(currentPath)) // It's a file path
-                {
-                    initialDir = Path.GetDirectoryName(currentPath);
-                    initialFileName = Path.GetFileName(currentPath);
-                }
-                else // Path doesn't exist, try getting directory anyway
-                {
-                     initialDir = Path.GetDirectoryName(currentPath);
-                     // If GetDirectoryName returns null (e.g., just "file.txt"), don't use it
-                     if(initialDir == null && !string.IsNullOrEmpty(currentPath) && currentPath.IndexOfAny(Path.GetInvalidFileNameChars()) == -1)
-                     {
-                         // Treat as filename only if it looks like a valid filename part
-                         initialFileName = currentPath;
-                     }
-                     else if (string.IsNullOrEmpty(initialDir)) {
-                         // Don't try to use null or empty dir
-                         initialDir = null;
-                     }
-                }
-
-
-                if (dialog is FileDialog fileDialog)
-                {
-                     if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
-                     {
-                         fileDialog.InitialDirectory = initialDir;
-                     }
-                     if (!string.IsNullOrEmpty(initialFileName))
-                     {
-                         fileDialog.FileName = initialFileName;
-                     }
-                }
-                else if (dialog is FolderBrowserDialog folderDialog)
-                {
-                    // FolderBrowserDialog only uses SelectedPath if it's an existing directory
-                     if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
-                     {
-                        folderDialog.SelectedPath = initialDir;
-                     }
-                     // It doesn't have an InitialDirectory property like FileDialog
-                     // Setting SelectedPath to a non-existent dir usually doesn't work well.
-                }
-            }
-            catch (ArgumentException)
-            {
-                 // Handle invalid path characters etc. Silently fail, dialog uses default.
-            }
-            catch (Exception) // Catch broader errors during path manipulation
-            {
-                // Silently fail, dialog uses default.
-                 // Avoid showing message boxes from here, let the dialog open normally.
-            }
-        }
-
-        // --- Message Display Methods ---
-
-        public void ClearOutput()
-        {
-             SafeAction(() => _statusOutput.Clear());
-        }
-
-        public void DisplayMessage(string message)
-        {
-            AppendStatusText(message + Environment.NewLine, Color.Black);
-        }
-
-        public void DisplayWarning(string message)
-        {
-            AppendStatusText($"Warning: {message}{Environment.NewLine}", Color.DarkOrange);
-        }
-
-        public void DisplayError(string message)
-        {
-            AppendStatusText($"Error: {message}{Environment.NewLine}", Color.Red);
-        }
-
-        public void DisplaySuccess(string message)
-        {
-            AppendStatusText($"{message}{Environment.NewLine}", Color.Green);
-        }
-
-        // Helper to safely append text to the RichTextBox from any thread
-        private void AppendStatusText(string text, Color color)
-        {
-            SafeAction(() =>
-            {
-                _statusOutput.SelectionStart = _statusOutput.TextLength;
-                _statusOutput.SelectionLength = 0;
-                _statusOutput.SelectionColor = color;
-                _statusOutput.AppendText(text);
-                _statusOutput.SelectionColor = _statusOutput.ForeColor; // Reset color
-                _statusOutput.ScrollToCaret(); // Keep latest messages visible
-            });
-        }
-
-        // Helper to execute an action on the UI thread if needed
-        private void SafeAction(Action action)
-        {
-            if (_owner.IsDisposed || _statusOutput.IsDisposed) return; // Prevent errors during shutdown
-
-            if (_statusOutput.InvokeRequired)
-            {
-                try { _statusOutput.Invoke(action); } catch (ObjectDisposedException) { /* Ignore if disposed during invoke */ }
-            }
-            else
-            {
-                 try { action(); } catch (ObjectDisposedException) { /* Ignore if disposed during action */ }
-            }
-        }
-
-        // --- Methods from ConsoleUI not directly applicable ---
-        // public char ShowMainMenu() => throw new NotSupportedException("Main menu is handled by the form's layout.");
-        // public char AskChangePathChoice() => throw new NotSupportedException("Path changes are handled by browse buttons.");
-        // public void WaitForEnter() { /* No-op in GUI */ }
-    }
-}
-
-// === End File: UI/WinFormsUI.cs ===

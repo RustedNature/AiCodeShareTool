@@ -31,5 +31,15 @@ namespace AiCodeShareTool.Configuration
         /// Gets the name of the default profile.
         /// </summary>
         string DefaultProfileName { get; }
+
+        /// <summary>
+        /// Reloads the configuration profiles from the persistent source.
+        /// </summary>
+        /// <returns>True if reload was successful, false otherwise.</returns>
+        bool ReloadProfiles();
+
+        // Note: Add/Edit/Delete methods would go here if implementing Profile Management UI
+        // bool SaveProfile(LanguageProfile profile);
+        // bool DeleteProfile(string profileName);
     }
 }

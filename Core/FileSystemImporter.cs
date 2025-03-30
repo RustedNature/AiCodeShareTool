@@ -1,4 +1,5 @@
 
+using System.IO.Compression; // Required for ZipFile
 using System.Text;
 using AiCodeShareTool.Configuration;
 
@@ -17,12 +18,36 @@ namespace AiCodeShareTool.Core
             _ui = ui ?? throw new ArgumentNullException(nameof(ui));
         }
 
-        public void Import(string projectDirectory, string importFilePath)
+        /// <summary>
+        /// Imports files, optionally creating a backup first.
+        /// </summary>
+        public void Import(string projectDirectory, string importFilePath, bool createBackup)
         {
             _ui.ClearOutput(); // Clear previous messages in UI
             _ui.DisplayMessage($"--- Starting Import ---");
 
             if (!ValidateInputs(projectDirectory, importFilePath)) return;
+
+             // --- Backup Step ---
+            if (createBackup)
+            {
+                if (!CreateBackup(projectDirectory))
+                {
+                     // CreateBackup displays errors, but confirm with user if they want to proceed
+                     // (Using a blocking MessageBox here, ideally IUserInterface would handle confirmation flows)
+                     var result = MessageBox.Show("Backup failed. Do you want to continue with the import without a backup?",
+                                                  "Backup Failed", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                     if (result == DialogResult.No)
+                     {
+                         _ui.DisplayWarning("Import cancelled by user due to backup failure.");
+                         _ui.DisplayMessage($"--- Import Cancelled ---");
+                         return;
+                     }
+                     _ui.DisplayWarning("Proceeding with import without backup.");
+                }
+            }
+             // --- End Backup Step ---
+
 
             _ui.DisplayMessage($"Starting import from '{importFilePath}' into '{projectDirectory}'...");
             int filesImported = 0;
@@ -34,7 +59,6 @@ namespace AiCodeShareTool.Core
 
             try
             {
-                // Detect encoding (simple BOM check), default to UTF-8
                  Encoding detectedEncoding = DetectEncoding(importFilePath);
                  _ui.DisplayMessage($"Detected import file encoding: {detectedEncoding.EncodingName}");
 
@@ -44,12 +68,10 @@ namespace AiCodeShareTool.Core
                     while ((line = reader.ReadLine()) != null)
                     {
                         lineNumber++;
-                        // Trim only for marker detection, preserve leading/trailing spaces in content lines
                         string trimmedLine = line.Trim();
 
                         if (trimmedLine.StartsWith(ExportSettings.StartFileMarkerPrefix) && trimmedLine.EndsWith(ExportSettings.MarkerSuffix))
                         {
-                            // Handle case where a previous file block wasn't properly closed
                             if (readingFileContent && !string.IsNullOrEmpty(currentRelativePath))
                             {
                                 _ui.DisplayWarning($"Line ~{lineNumber}: Found new start marker before end marker for '{currentRelativePath}'. Skipping previous partial content.");
@@ -63,61 +85,43 @@ namespace AiCodeShareTool.Core
                                 currentRelativePath = null;
                                 readingFileContent = false;
                                 filesSkipped++;
-                                continue; // Skip to next line
+                                continue;
                             }
 
-                            // Normalize path for internal comparison and use
                             currentRelativePath = currentRelativePath.Replace('/', Path.DirectorySeparatorChar);
                             readingFileContent = true;
                             fileContentBuilder.Clear();
 
-                            // Consume the single blank line typically following the start marker.
-                            // Peek to see if the next line exists and is blank.
                             int nextChar = reader.Peek();
-                            if (nextChar != -1) // Check if not EOF
+                            if (nextChar != -1)
                             {
-                                // Need to read the line to check if it's blank, then decide if we keep it or not.
-                                // This is tricky. Let's assume the exporter *always* puts a blank line after the START marker.
-                                // We read and discard this line. If the content starts immediately, this might discard the first line.
-                                // A safer approach: don't discard here, let the content builder handle it, and maybe trim later.
-                                // Let's stick to the simple approach for now: assume blank line after start marker.
                                 string? potentialBlankLine = reader.ReadLine();
-                                if (potentialBlankLine != null) // Should not be null if Peek didn't return -1
-                                {
-                                     lineNumber++;
-                                     // If the line wasn't actually blank, add it back? Too complex.
-                                     // Assume the convention holds. If not, the first line might be lost.
-                                }
+                                if (potentialBlankLine != null) lineNumber++;
                             }
                         }
                         else if (trimmedLine.StartsWith(ExportSettings.EndFileMarkerPrefix) && trimmedLine.EndsWith(ExportSettings.MarkerSuffix) && readingFileContent)
                         {
-                             // Before processing the end marker, remove the single blank line *preceding* it,
-                             // which the exporter adds.
                              string currentContent = fileContentBuilder.ToString();
                              if (currentContent.EndsWith(Environment.NewLine))
                              {
                                  string contentWithoutLastNewLine = currentContent.Substring(0, currentContent.Length - Environment.NewLine.Length);
-                                 // Check if the character before that was *also* a newline char (indicating a blank line)
                                  if (contentWithoutLastNewLine.EndsWith(Environment.NewLine))
                                  {
-                                      // It was a blank line, remove it from the builder
                                        fileContentBuilder.Length = contentWithoutLastNewLine.Length;
                                  }
                              }
 
-
                             if (currentRelativePath == null)
                             {
                                 _ui.DisplayWarning($"Line {lineNumber}: Found end marker without a corresponding valid start marker. Ignoring.");
-                                continue; // Skip this marker
+                                continue;
                             }
 
                             string endMarkerPathRaw = ExtractPathFromMarker(trimmedLine, ExportSettings.EndFileMarkerPrefix);
                             if (string.IsNullOrWhiteSpace(endMarkerPathRaw))
                             {
                                  _ui.DisplayWarning($"Line {lineNumber}: Found end marker with invalid/empty path. Ignoring.");
-                                 continue; // Skip this marker
+                                 continue;
                             }
                             string endMarkerPath = endMarkerPathRaw.Replace('/', Path.DirectorySeparatorChar);
 
@@ -129,7 +133,7 @@ namespace AiCodeShareTool.Core
                                 }
                                 else
                                 {
-                                    filesSkipped++; // WriteImportedFile logs specific errors
+                                    filesSkipped++;
                                 }
                             }
                             else
@@ -138,12 +142,10 @@ namespace AiCodeShareTool.Core
                                 filesSkipped++;
                             }
 
-                            // Reset state for the next file block
                             readingFileContent = false;
                             currentRelativePath = null;
                             fileContentBuilder.Clear();
 
-                             // Consume the single blank line typically following the END marker.
                              int nextChar = reader.Peek();
                              if (nextChar != -1)
                              {
@@ -153,14 +155,11 @@ namespace AiCodeShareTool.Core
                         }
                         else if (readingFileContent && currentRelativePath != null)
                         {
-                            // Add line to content buffer, preserving original line structure
                             fileContentBuilder.AppendLine(line);
                         }
-                        // Ignore lines outside of start/end blocks (like headers or blank lines between files)
                     }
                 } // End using StreamReader
 
-                // Check if we ended mid-file
                 if (readingFileContent && !string.IsNullOrEmpty(currentRelativePath))
                 {
                     _ui.DisplayWarning($"Reached end of import file while still reading content for '{currentRelativePath}'. File might be truncated or missing end marker. Skipping final content block.");
@@ -179,23 +178,65 @@ namespace AiCodeShareTool.Core
             }
         }
 
+        // Overload for backward compatibility or simpler calls
+         public void Import(string projectDirectory, string importFilePath)
+         {
+             Import(projectDirectory, importFilePath, false); // Default to no backup
+         }
+
+         private bool CreateBackup(string projectDirectory)
+         {
+             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+             string backupFileName = $"ProjectBackup_{Path.GetFileName(projectDirectory)}_{timestamp}.zip";
+             // Place backup in the parent directory of the project directory for less clutter
+             string? parentDir = Path.GetDirectoryName(projectDirectory.TrimEnd(Path.DirectorySeparatorChar));
+             if(string.IsNullOrEmpty(parentDir) || !Directory.Exists(parentDir))
+             {
+                 // Fallback to placing it inside the project dir if parent is inaccessible/root
+                 parentDir = projectDirectory;
+             }
+             string backupFilePath = Path.Combine(parentDir, backupFileName);
+
+             _ui.DisplayMessage($"Attempting to create backup of '{projectDirectory}' to '{backupFilePath}'...");
+
+             try
+             {
+                 // Ensure System.IO.Compression is available
+                 ZipFile.CreateFromDirectory(projectDirectory, backupFilePath, CompressionLevel.Optimal, includeBaseDirectory: true);
+                 _ui.DisplaySuccess($"Backup created successfully: {backupFilePath}");
+                 return true;
+             }
+             catch (UnauthorizedAccessException uaEx) { _ui.DisplayError($"Backup failed: Permission denied accessing '{projectDirectory}' or writing to '{backupFilePath}'. {uaEx.Message}"); }
+             catch (DirectoryNotFoundException dnfEx) { _ui.DisplayError($"Backup failed: Directory not found. {dnfEx.Message}"); }
+             catch (IOException ioEx) { _ui.DisplayError($"Backup failed: I/O error (e.g., disk full, file locked). {ioEx.Message}"); }
+             catch (Exception ex) { _ui.DisplayError($"Backup failed: An unexpected error occurred. {ex.Message}"); }
+
+             return false;
+         }
+
+
         private Encoding DetectEncoding(string filename)
         {
-             // Simple BOM detection
             byte[] bom = new byte[4];
-            using (var file = new FileStream(filename, FileMode.Open, FileAccess.Read))
+            try
             {
-                file.Read(bom, 0, 4);
+                using (var file = new FileStream(filename, FileMode.Open, FileAccess.Read))
+                {
+                    file.Read(bom, 0, 4);
+                }
+            }
+            catch(IOException ioEx)
+            {
+                _ui.DisplayWarning($"Could not read start of import file to detect encoding: {ioEx.Message}. Defaulting to UTF-8.");
+                return new UTF8Encoding(false);
             }
 
-             if (bom[0] == 0xef && bom[1] == 0xbb && bom[2] == 0xbf) return Encoding.UTF8; // UTF-8 BOM
-             if (bom[0] == 0xff && bom[1] == 0xfe) return Encoding.Unicode; // UTF-16 LE BOM
-             if (bom[0] == 0xfe && bom[1] == 0xff) return Encoding.BigEndianUnicode; // UTF-16 BE BOM
-             // Could add UTF-32 checks if needed (bom[0] == 0x00 && bom[1] == 0x00 && bom[2] == 0xfe && bom[3] == 0xff)
 
-             // Fallback or more advanced detection could go here.
-             // For now, assume UTF-8 without BOM if no BOM is found.
-             return new UTF8Encoding(false); // UTF-8 without BOM
+             if (bom[0] == 0xef && bom[1] == 0xbb && bom[2] == 0xbf) return Encoding.UTF8;
+             if (bom[0] == 0xff && bom[1] == 0xfe) return Encoding.Unicode;
+             if (bom[0] == 0xfe && bom[1] == 0xff) return Encoding.BigEndianUnicode;
+
+             return new UTF8Encoding(false);
         }
 
 
@@ -208,7 +249,11 @@ namespace AiCodeShareTool.Core
              }
             if (!Directory.Exists(projectDirectory))
             {
-                _ui.DisplayError($"Project directory '{projectDirectory}' does not exist.");
+                 // Offer to create the directory? For import, it might be safer to require it exists.
+                 _ui.DisplayError($"Project (target) directory '{projectDirectory}' does not exist. Please create it first.");
+                 // Alternatively:
+                 // _ui.DisplayWarning($"Project directory '{projectDirectory}' does not exist. It will be created.");
+                 // Directory.CreateDirectory(projectDirectory); // If deciding to auto-create
                 return false;
             }
             if (string.IsNullOrWhiteSpace(importFilePath))
@@ -221,7 +266,6 @@ namespace AiCodeShareTool.Core
                 _ui.DisplayError($"Import file '{importFilePath}' does not exist.");
                 return false;
             }
-             // Check if import file path is valid (basic check)
             try
             {
                 Path.GetFullPath(importFilePath);
@@ -240,7 +284,7 @@ namespace AiCodeShareTool.Core
 
             int startIndex = prefix.Length;
             int endIndex = line.Length - ExportSettings.MarkerSuffix.Length;
-            if (endIndex <= startIndex) return null; // Empty path
+            if (endIndex <= startIndex) return null;
 
             return line.Substring(startIndex, endIndex - startIndex).Trim();
         }
@@ -252,15 +296,12 @@ namespace AiCodeShareTool.Core
                 _ui.DisplayWarning($"Line {lineNumber}: Invalid empty path in marker. Skipping block.");
                 return false;
             }
-            // Basic check for invalid path characters and directory traversal attempts
-            // Normalize separators for consistent check before checking invalid chars
             string normalizedPath = relativePath.Replace('/', Path.DirectorySeparatorChar);
             if (normalizedPath.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || normalizedPath.Contains(".." + Path.DirectorySeparatorChar) || normalizedPath.StartsWith(".." + Path.DirectorySeparatorChar) || normalizedPath == "..")
             {
                 _ui.DisplayWarning($"Line {lineNumber}: Invalid or potentially unsafe path detected in marker ('{relativePath}'). Skipping block.");
                 return false;
             }
-             // Ensure it doesn't start with a drive letter or root path, indicating an absolute path slipped through
             if (Path.IsPathRooted(normalizedPath))
             {
                 _ui.DisplayWarning($"Line {lineNumber}: Absolute path detected in marker ('{relativePath}'). Only relative paths allowed. Skipping block.");
@@ -274,19 +315,19 @@ namespace AiCodeShareTool.Core
         private bool WriteImportedFile(string baseDirectory, string relativePath, StringBuilder contentBuilder)
         {
             string fullPath;
-             // Get final content. The blank line trimming is now handled during parsing.
-             // We still trim trailing whitespace/newlines that might exist at the very end of the content block.
             string content = contentBuilder.ToString().TrimEnd('\r', '\n');
 
             try
             {
-                // Combine first, then get full path for security check
                 string combinedPath = Path.Combine(baseDirectory, relativePath);
                 fullPath = Path.GetFullPath(combinedPath);
 
-                // **Security Check:** Prevent writing outside the intended project directory
-                string fullBasePathCanonical = Path.GetFullPath(baseDirectory + Path.DirectorySeparatorChar); // Ensure trailing slash for comparison
-                if (!fullPath.StartsWith(fullBasePathCanonical, StringComparison.OrdinalIgnoreCase))
+                string fullBasePathCanonical = Path.GetFullPath(baseDirectory);
+                // Robust check: ensure the resulting full path starts with the base path + directory separator
+                // This handles cases like base="C:\foo", relative="bar", full="C:\foo\bar" (good)
+                // And base="C:\foo", relative="..\bar", full="C:\bar" (bad)
+                // And base="C:\foo", relative="C:\abs\path" (bad)
+                 if (!fullPath.StartsWith(fullBasePathCanonical + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) && fullPath != fullBasePathCanonical) // Allow writing to base itself if needed? Unlikely.
                 {
                     _ui.DisplayWarning($"  Security Warning: Skipping file '{relativePath}'. Target path '{fullPath}' is outside the base project directory '{fullBasePathCanonical}'.");
                     return false;
@@ -306,17 +347,15 @@ namespace AiCodeShareTool.Core
                 }
 
                 _ui.DisplayMessage($"  Writing file: {relativePath}");
-                // Use WriteAllText which handles overwriting existing files.
-                // Ensure UTF-8 encoding without BOM for compatibility, matching the exporter.
                 File.WriteAllText(fullPath, content, new UTF8Encoding(false));
-                return true; // Success
+                return true;
             }
             catch (UnauthorizedAccessException ex) { _ui.DisplayError($"  Error: Access denied writing file '{relativePath}'. Skipping. {ex.Message}"); }
             catch (DirectoryNotFoundException ex) { _ui.DisplayError($"  Error: Could not find part of the path for '{relativePath}'. Directory creation might have failed. Skipping. {ex.Message}"); }
             catch (IOException ex) { _ui.DisplayError($"  Error: I/O error writing file '{relativePath}'. Skipping. {ex.Message}"); }
             catch (Exception ex) { _ui.DisplayError($"  Error: Unexpected error writing file '{relativePath}'. Skipping. {ex.Message}"); }
 
-            return false; // Failed
+            return false;
         }
     }
 }
