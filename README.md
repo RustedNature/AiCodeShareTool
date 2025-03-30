@@ -82,12 +82,12 @@ File Markers: Each individual file's content included in the output MUST be clea
 Start Marker Format: Before the content of each file, you MUST include a line exactly like this:
 
 
-// === Start* File: {relativePath} ===
+// === Start File: {relativePath} ===
 
 End Marker Format: After the content of each file, you MUST include a line exactly like this:
 
 
-// === End* File: {relativePath} ===
+// === End File: {relativePath} ===
 
 
 Path Requirement: The `{relativePath}` placeholder in the markers MUST be the correct relative path of the file *from the project's base directory*, even if it's an existing file being modified.
