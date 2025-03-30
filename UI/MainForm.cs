@@ -1,5 +1,5 @@
-﻿
 
+using AiCodeShareTool.Configuration;
 using AiCodeShareTool.Core;
 
 namespace AiCodeShareTool.UI
@@ -7,34 +7,95 @@ namespace AiCodeShareTool.UI
     public partial class MainForm : Form
     {
         private readonly ApplicationState _appState;
+        private readonly IConfigurationService _configService;
         private readonly IUserInterface _ui;
         private readonly IExporter _exporter;
         private readonly IImporter _importer;
 
-        public MainForm()
+        // Constructor now accepts ApplicationState and IConfigurationService
+        public MainForm(ApplicationState appState, IConfigurationService configService)
         {
             InitializeComponent();
 
-            // --- Dependency Setup ---
-            _appState = new ApplicationState();
-            // Pass the form's RichTextBox to the UI implementation
-            _ui = new WinFormsUI(this, this.rtbStatus);
-            _exporter = new FileSystemExporter(_ui);
-            _importer = new FileSystemImporter(_ui);
-            // --- End Dependency Setup ---
+            // Store dependencies
+            _appState = appState ?? throw new ArgumentNullException(nameof(appState));
+            _configService = configService ?? throw new ArgumentNullException(nameof(configService));
 
-            // Set initial control states if needed (e.g., load persisted paths)
+            // Initialize components that depend on the services
+            _ui = new WinFormsUI(this, this.rtbStatus);
+            _exporter = new FileSystemExporter(_ui, _configService); // Pass config service to exporter
+            _importer = new FileSystemImporter(_ui); // Importer doesn't need config service
+
+            // Load initial paths and populate profile dropdown
             LoadInitialPaths();
+            PopulateLanguageProfiles();
+            SelectInitialProfile();
         }
 
         private void LoadInitialPaths()
         {
-            // In a real app, load from settings/config file
-            // For now, just reflect the initial null state
+            // In a real app, load from persisted settings
             txtProjectDir.Text = _appState.CurrentProjectDirectory ?? "";
             txtExportPath.Text = _appState.CurrentExportFilePath ?? "";
             txtImportPath.Text = _appState.CurrentImportFilePath ?? "";
         }
+
+         private void PopulateLanguageProfiles()
+         {
+            var profiles = _configService.GetAvailableProfiles();
+            cmbLanguageProfile.Items.Clear();
+            cmbLanguageProfile.DisplayMember = nameof(LanguageProfile.Name); // Show the Name property
+            foreach (var profile in profiles)
+            {
+                cmbLanguageProfile.Items.Add(profile);
+            }
+         }
+
+         private void SelectInitialProfile()
+         {
+             // Try selecting based on stored state, fallback to service default
+            string profileToSelect = _appState.ActiveLanguageProfileName ?? _configService.DefaultProfileName;
+
+            for (int i = 0; i < cmbLanguageProfile.Items.Count; i++)
+            {
+                if (cmbLanguageProfile.Items[i] is LanguageProfile profile && profile.Name.Equals(profileToSelect, StringComparison.OrdinalIgnoreCase))
+                {
+                    cmbLanguageProfile.SelectedIndex = i;
+                    // Update the active profile in the service to match the UI selection
+                    _configService.SetActiveProfile(profile.Name);
+                    _ui.DisplayMessage($"Initial language profile set to: {profile.Name}");
+                    return;
+                }
+            }
+
+            // Fallback if stored name not found (shouldn't happen with default logic)
+             if (cmbLanguageProfile.Items.Count > 0)
+             {
+                cmbLanguageProfile.SelectedIndex = 0;
+                if(cmbLanguageProfile.SelectedItem is LanguageProfile selectedProfile)
+                {
+                     _configService.SetActiveProfile(selectedProfile.Name);
+                     _ui.DisplayMessage($"Initial language profile defaulted to: {selectedProfile.Name}");
+                }
+             }
+         }
+
+         private void cmbLanguageProfile_SelectedIndexChanged(object sender, EventArgs e)
+        {
+             if (cmbLanguageProfile.SelectedItem is LanguageProfile selectedProfile)
+             {
+                bool success = _configService.SetActiveProfile(selectedProfile.Name);
+                 _appState.ActiveLanguageProfileName = selectedProfile.Name; // Update state
+                if(success)
+                {
+                    _ui.DisplayMessage($"Active language profile changed to: {selectedProfile.Name}");
+                } else {
+                    // This shouldn't happen if the item came from the list
+                     _ui.DisplayWarning($"Could not activate selected profile: {selectedProfile.Name}");
+                }
+             }
+        }
+
 
         private void btnBrowseProject_Click(object sender, EventArgs e)
         {
@@ -84,12 +145,18 @@ namespace AiCodeShareTool.UI
             // Ensure state matches UI just before action
             _appState.CurrentProjectDirectory = txtProjectDir.Text;
             _appState.CurrentExportFilePath = txtExportPath.Text;
+             // Active profile is already set by combobox handler
 
             if (string.IsNullOrWhiteSpace(_appState.CurrentProjectDirectory) || string.IsNullOrWhiteSpace(_appState.CurrentExportFilePath))
             {
                 _ui.DisplayError("Please select both a Project Directory and an Export File Path before exporting.");
                 return;
             }
+             if (_configService.GetActiveProfile() == null) // Sanity check
+             {
+                 _ui.DisplayError("No language profile is selected. Please select one from the dropdown.");
+                 return;
+             }
 
             // Disable buttons during operation
             SetBusyState(true);
@@ -98,6 +165,7 @@ namespace AiCodeShareTool.UI
             try
             {
                  // Using Task.Run to avoid blocking the UI thread
+                 // Exporter now uses the active profile from the injected config service
                  await Task.Run(() => _exporter.Export(_appState.CurrentProjectDirectory, _appState.CurrentExportFilePath));
             }
             catch(Exception ex)
@@ -170,6 +238,8 @@ namespace AiCodeShareTool.UI
                 txtProjectDir.Enabled = !busy;
                 txtExportPath.Enabled = !busy;
                 txtImportPath.Enabled = !busy;
+                 cmbLanguageProfile.Enabled = !busy; // Disable profile selection during operation
+
                 // Optional: Show a progress indicator like a marquee progress bar
                  progressBar.Visible = busy;
                  progressBar.Style = busy ? ProgressBarStyle.Marquee : ProgressBarStyle.Blocks;

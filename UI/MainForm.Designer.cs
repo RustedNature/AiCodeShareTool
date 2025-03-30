@@ -1,4 +1,3 @@
-﻿
 
 namespace AiCodeShareTool.UI
 {
@@ -44,6 +43,8 @@ namespace AiCodeShareTool.UI
             rtbStatus = new RichTextBox();
             lblStatus = new Label();
             progressBar = new ProgressBar();
+            lblLanguageProfile = new Label();
+            cmbLanguageProfile = new ComboBox();
             SuspendLayout();
             // 
             // lblProjectDir
@@ -133,10 +134,10 @@ namespace AiCodeShareTool.UI
             // btnExport
             // 
             btnExport.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnExport.Location = new Point(12, 123);
+            btnExport.Location = new Point(12, 165);
             btnExport.Name = "btnExport";
             btnExport.Size = new Size(180, 35);
-            btnExport.TabIndex = 9;
+            btnExport.TabIndex = 11;
             btnExport.Text = "Export Project";
             btnExport.UseVisualStyleBackColor = true;
             btnExport.Click += btnExport_Click;
@@ -144,10 +145,10 @@ namespace AiCodeShareTool.UI
             // btnImport
             // 
             btnImport.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnImport.Location = new Point(198, 123);
+            btnImport.Location = new Point(198, 165);
             btnImport.Name = "btnImport";
             btnImport.Size = new Size(180, 35);
-            btnImport.TabIndex = 10;
+            btnImport.TabIndex = 12;
             btnImport.Text = "Import Code";
             btnImport.UseVisualStyleBackColor = true;
             btnImport.Click += btnImport_Click;
@@ -156,32 +157,34 @@ namespace AiCodeShareTool.UI
             // 
             rtbStatus.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             rtbStatus.BackColor = SystemColors.Window;
-            rtbStatus.Location = new Point(12, 192);
+            rtbStatus.Location = new Point(12, 234);
             rtbStatus.Name = "rtbStatus";
             rtbStatus.ReadOnly = true;
             rtbStatus.ScrollBars = RichTextBoxScrollBars.Vertical;
-            rtbStatus.Size = new Size(755, 277);
-            rtbStatus.TabIndex = 12;
+            rtbStatus.Size = new Size(755, 235);
+            rtbStatus.TabIndex = 15;
             rtbStatus.Text = "";
             rtbStatus.LinkClicked += (sender, e) => {
                 try {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.LinkText) { UseShellExecute = true });
+                     if (e.LinkText != null) {
+                          System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.LinkText) { UseShellExecute = true });
+                     }
                 } catch (Exception ex) { /* Handle exceptions if needed */ MessageBox.Show($"Could not open link: {ex.Message}"); }
             };
             // 
             // lblStatus
             // 
             lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(12, 169);
+            lblStatus.Location = new Point(12, 211);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(52, 20);
-            lblStatus.TabIndex = 11;
+            lblStatus.TabIndex = 14;
             lblStatus.Text = "Status:";
             // 
             // progressBar
             // 
             progressBar.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            progressBar.Location = new Point(384, 127);
+            progressBar.Location = new Point(384, 169);
             progressBar.MarqueeAnimationSpeed = 50;
             progressBar.Name = "progressBar";
             progressBar.Size = new Size(383, 28);
@@ -189,11 +192,33 @@ namespace AiCodeShareTool.UI
             progressBar.TabIndex = 13;
             progressBar.Visible = false;
             // 
+            // lblLanguageProfile
+            // 
+            lblLanguageProfile.AutoSize = true;
+            lblLanguageProfile.Location = new Point(12, 124);
+            lblLanguageProfile.Name = "lblLanguageProfile";
+            lblLanguageProfile.Size = new Size(122, 20);
+            lblLanguageProfile.TabIndex = 9;
+            lblLanguageProfile.Text = "Language Profile:";
+            // 
+            // cmbLanguageProfile
+            // 
+            cmbLanguageProfile.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            cmbLanguageProfile.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbLanguageProfile.FormattingEnabled = true;
+            cmbLanguageProfile.Location = new Point(142, 121);
+            cmbLanguageProfile.Name = "cmbLanguageProfile";
+            cmbLanguageProfile.Size = new Size(625, 28);
+            cmbLanguageProfile.TabIndex = 10;
+            cmbLanguageProfile.SelectedIndexChanged += cmbLanguageProfile_SelectedIndexChanged;
+            // 
             // MainForm
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(779, 481);
+            Controls.Add(cmbLanguageProfile);
+            Controls.Add(lblLanguageProfile);
             Controls.Add(progressBar);
             Controls.Add(lblStatus);
             Controls.Add(rtbStatus);
@@ -208,7 +233,7 @@ namespace AiCodeShareTool.UI
             Controls.Add(btnBrowseProject);
             Controls.Add(txtProjectDir);
             Controls.Add(lblProjectDir);
-            MinimumSize = new Size(500, 400);
+            MinimumSize = new Size(500, 450);
             Name = "MainForm";
             Text = "AI Code Share Tool";
             ResumeLayout(false);
@@ -231,5 +256,7 @@ namespace AiCodeShareTool.UI
         private RichTextBox rtbStatus;
         private Label lblStatus;
         private ProgressBar progressBar;
+        private Label lblLanguageProfile;
+        private ComboBox cmbLanguageProfile;
     }
 }

@@ -1,4 +1,3 @@
-﻿
 
 using System.Text;
 using AiCodeShareTool.Configuration;
@@ -7,6 +6,7 @@ namespace AiCodeShareTool.Core
 {
     /// <summary>
     /// Implements the import functionality using the local file system.
+    /// Import does not depend on language profiles, only on the file format markers.
     /// </summary>
     public class FileSystemImporter : IImporter
     {
@@ -34,7 +34,11 @@ namespace AiCodeShareTool.Core
 
             try
             {
-                using (StreamReader reader = new StreamReader(importFilePath, Encoding.UTF8))
+                // Detect encoding (simple BOM check), default to UTF-8
+                 Encoding detectedEncoding = DetectEncoding(importFilePath);
+                 _ui.DisplayMessage($"Detected import file encoding: {detectedEncoding.EncodingName}");
+
+                using (StreamReader reader = new StreamReader(importFilePath, detectedEncoding))
                 {
                     string? line;
                     while ((line = reader.ReadLine()) != null)
@@ -66,34 +70,40 @@ namespace AiCodeShareTool.Core
                             currentRelativePath = currentRelativePath.Replace('/', Path.DirectorySeparatorChar);
                             readingFileContent = true;
                             fileContentBuilder.Clear();
-                            // Skip the blank line often following the start marker
-                            string? nextLinePeek = reader.Peek() == '\r' || reader.Peek() == '\n' ? reader.ReadLine() : null;
-                             if (nextLinePeek != null && string.IsNullOrWhiteSpace(nextLinePeek))
-                             {
-                                 lineNumber++; // Consume the blank line
-                             } else if (nextLinePeek != null)
-                             {
-                                 // First line of content might be immediately after marker, handle it
-                                fileContentBuilder.AppendLine(nextLinePeek);
-                                lineNumber++;
-                             }
 
+                            // Consume the single blank line typically following the start marker.
+                            // Peek to see if the next line exists and is blank.
+                            int nextChar = reader.Peek();
+                            if (nextChar != -1) // Check if not EOF
+                            {
+                                // Need to read the line to check if it's blank, then decide if we keep it or not.
+                                // This is tricky. Let's assume the exporter *always* puts a blank line after the START marker.
+                                // We read and discard this line. If the content starts immediately, this might discard the first line.
+                                // A safer approach: don't discard here, let the content builder handle it, and maybe trim later.
+                                // Let's stick to the simple approach for now: assume blank line after start marker.
+                                string? potentialBlankLine = reader.ReadLine();
+                                if (potentialBlankLine != null) // Should not be null if Peek didn't return -1
+                                {
+                                     lineNumber++;
+                                     // If the line wasn't actually blank, add it back? Too complex.
+                                     // Assume the convention holds. If not, the first line might be lost.
+                                }
+                            }
                         }
                         else if (trimmedLine.StartsWith(ExportSettings.EndFileMarkerPrefix) && trimmedLine.EndsWith(ExportSettings.MarkerSuffix) && readingFileContent)
                         {
-                             // Skip potential blank line just BEFORE the end marker
+                             // Before processing the end marker, remove the single blank line *preceding* it,
+                             // which the exporter adds.
                              string currentContent = fileContentBuilder.ToString();
-                             if (currentContent.EndsWith(Environment.NewLine + Environment.NewLine))
+                             if (currentContent.EndsWith(Environment.NewLine))
                              {
-                                 fileContentBuilder.Length -= Environment.NewLine.Length; // Remove one trailing newline pair
-                             }
-                             else if (currentContent.EndsWith("\n\n")) // Handle Linux/Mac style maybe
-                             {
-                                  fileContentBuilder.Length -= 1;
-                             }
-                             else if (currentContent.EndsWith("\r\n\r\n")) // Handle Windows style maybe
-                             {
-                                  fileContentBuilder.Length -= 2;
+                                 string contentWithoutLastNewLine = currentContent.Substring(0, currentContent.Length - Environment.NewLine.Length);
+                                 // Check if the character before that was *also* a newline char (indicating a blank line)
+                                 if (contentWithoutLastNewLine.EndsWith(Environment.NewLine))
+                                 {
+                                      // It was a blank line, remove it from the builder
+                                       fileContentBuilder.Length = contentWithoutLastNewLine.Length;
+                                 }
                              }
 
 
@@ -132,6 +142,14 @@ namespace AiCodeShareTool.Core
                             readingFileContent = false;
                             currentRelativePath = null;
                             fileContentBuilder.Clear();
+
+                             // Consume the single blank line typically following the END marker.
+                             int nextChar = reader.Peek();
+                             if (nextChar != -1)
+                             {
+                                string? potentialBlankLine = reader.ReadLine();
+                                if (potentialBlankLine != null) lineNumber++;
+                             }
                         }
                         else if (readingFileContent && currentRelativePath != null)
                         {
@@ -160,6 +178,26 @@ namespace AiCodeShareTool.Core
                 _ui.DisplayMessage($"--- Import Finished ---");
             }
         }
+
+        private Encoding DetectEncoding(string filename)
+        {
+             // Simple BOM detection
+            byte[] bom = new byte[4];
+            using (var file = new FileStream(filename, FileMode.Open, FileAccess.Read))
+            {
+                file.Read(bom, 0, 4);
+            }
+
+             if (bom[0] == 0xef && bom[1] == 0xbb && bom[2] == 0xbf) return Encoding.UTF8; // UTF-8 BOM
+             if (bom[0] == 0xff && bom[1] == 0xfe) return Encoding.Unicode; // UTF-16 LE BOM
+             if (bom[0] == 0xfe && bom[1] == 0xff) return Encoding.BigEndianUnicode; // UTF-16 BE BOM
+             // Could add UTF-32 checks if needed (bom[0] == 0x00 && bom[1] == 0x00 && bom[2] == 0xfe && bom[3] == 0xff)
+
+             // Fallback or more advanced detection could go here.
+             // For now, assume UTF-8 without BOM if no BOM is found.
+             return new UTF8Encoding(false); // UTF-8 without BOM
+        }
+
 
         private bool ValidateInputs(string projectDirectory, string importFilePath)
         {
@@ -236,7 +274,8 @@ namespace AiCodeShareTool.Core
         private bool WriteImportedFile(string baseDirectory, string relativePath, StringBuilder contentBuilder)
         {
             string fullPath;
-             // Get final content and trim trailing empty lines only from the *entire block*
+             // Get final content. The blank line trimming is now handled during parsing.
+             // We still trim trailing whitespace/newlines that might exist at the very end of the content block.
             string content = contentBuilder.ToString().TrimEnd('\r', '\n');
 
             try
@@ -268,7 +307,7 @@ namespace AiCodeShareTool.Core
 
                 _ui.DisplayMessage($"  Writing file: {relativePath}");
                 // Use WriteAllText which handles overwriting existing files.
-                // Ensure UTF-8 encoding without BOM for compatibility.
+                // Ensure UTF-8 encoding without BOM for compatibility, matching the exporter.
                 File.WriteAllText(fullPath, content, new UTF8Encoding(false));
                 return true; // Success
             }

@@ -1,4 +1,3 @@
-﻿
 
 using System.Text;
 using AiCodeShareTool.Configuration;
@@ -7,20 +6,34 @@ namespace AiCodeShareTool.Core
 {
     /// <summary>
     /// Implements the export functionality using the local file system.
+    /// Uses the active configuration profile provided by IConfigurationService.
     /// </summary>
     public class FileSystemExporter : IExporter
     {
         private readonly IUserInterface _ui;
+        private readonly IConfigurationService _configService;
 
-        public FileSystemExporter(IUserInterface ui)
+        public FileSystemExporter(IUserInterface ui, IConfigurationService configService)
         {
             _ui = ui ?? throw new ArgumentNullException(nameof(ui));
+            _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         }
 
         public void Export(string projectDirectory, string exportFilePath)
         {
             _ui.ClearOutput(); // Clear previous messages in UI
-            _ui.DisplayMessage($"--- Starting Export ---");
+            LanguageProfile activeProfile;
+            try
+            {
+                activeProfile = _configService.GetActiveProfile();
+            }
+            catch (InvalidOperationException ex)
+            {
+                _ui.DisplayError($"Cannot export: No language profile is active. {ex.Message}");
+                return;
+            }
+
+            _ui.DisplayMessage($"--- Starting Export using '{activeProfile.Name}' profile ---");
 
             if (!ValidateInputs(projectDirectory, exportFilePath)) return;
 
@@ -28,13 +41,26 @@ namespace AiCodeShareTool.Core
             {
                 EnsureExportDirectoryExists(exportFilePath);
 
-                _ui.DisplayMessage($"Searching for files in '{projectDirectory}' (applying blacklist and excluding {ExportSettings.BinFolderName}/{ExportSettings.ObjFolderName}/{ExportSettings.VsFolderName})...");
+                // Combine global excludes with profile excludes if they were added to profile
+                var excludedFolders = new[] {
+                    ExportSettings.BinFolderName, ExportSettings.ObjFolderName,
+                    ExportSettings.VsFolderName, ExportSettings.GitFolderName,
+                    ExportSettings.NodeModulesFolderName
+                }.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
-                var codeFiles = FindAndFilterFiles(projectDirectory);
+                 _ui.DisplayMessage($"Searching for files matching patterns: {string.Join(", ", activeProfile.SearchPatterns)}");
+                 _ui.DisplayMessage($"Excluding folders: {string.Join(", ", excludedFolders)}");
+                 _ui.DisplayMessage($"Excluding extensions: {string.Join(", ", activeProfile.BlacklistedExtensions)}");
+                 _ui.DisplayMessage($"Excluding filenames: {string.Join(", ", activeProfile.BlacklistedFileNames)}");
+
+
+                _ui.DisplayMessage($"\nSearching in '{projectDirectory}'...");
+
+                var codeFiles = FindAndFilterFiles(projectDirectory, activeProfile, excludedFolders);
 
                 if (codeFiles.Length == 0)
                 {
-                    _ui.DisplayWarning($"No suitable, non-blacklisted files found matching patterns in '{projectDirectory}'. Export aborted.");
+                    _ui.DisplayWarning($"No suitable, non-blacklisted files found matching profile patterns in '{projectDirectory}'. Export aborted.");
                     return;
                 }
 
@@ -101,36 +127,56 @@ namespace AiCodeShareTool.Core
             }
         }
 
-        private string[] FindAndFilterFiles(string projectDirectory)
+        private string[] FindAndFilterFiles(string projectDirectory, LanguageProfile profile, string[] globallyExcludedFolders)
         {
             List<string> allFiles = new List<string>();
             EnumerationOptions enumOptions = new EnumerationOptions()
             {
                 IgnoreInaccessible = true,
-                RecurseSubdirectories = true
+                RecurseSubdirectories = true,
+                // MatchCasing can be adjusted if needed, default depends on OS
+                 MatchType = MatchType.Simple, // Use simple wildcard matching
+                 AttributesToSkip = FileAttributes.Hidden | FileAttributes.System // Optionally skip hidden/system files
             };
 
-            foreach (string pattern in ExportSettings.DefaultSearchPatterns)
+            foreach (string pattern in profile.SearchPatterns)
             {
-                try { allFiles.AddRange(Directory.EnumerateFiles(projectDirectory, pattern, enumOptions)); }
+                try
+                {
+                     // Ensure pattern doesn't try to escape the root directory
+                     if(pattern.Contains("..")) {
+                         _ui.DisplayWarning($"Skipping potentially unsafe search pattern: '{pattern}'");
+                         continue;
+                     }
+                    allFiles.AddRange(Directory.EnumerateFiles(projectDirectory, pattern, enumOptions));
+                }
+                 catch (ArgumentException argEx) { _ui.DisplayWarning($"Invalid search pattern '{pattern}'. Skipping. Error: {argEx.Message}"); }
                 catch (Exception ex) { _ui.DisplayWarning($"Error enumerating files for pattern '{pattern}': {ex.Message}"); }
             }
 
             string fullProjDirPath = Path.GetFullPath(projectDirectory);
-            string lowerProjDir = fullProjDirPath.ToLowerInvariant() + Path.DirectorySeparatorChar; // Ensure trailing slash
+            // Ensure trailing slash for robust StartsWith comparison
+            string lowerProjDirWithSlash = Path.TrimEndingDirectorySeparator(fullProjDirPath.ToLowerInvariant()) + Path.DirectorySeparatorChar;
 
-            // Pre-compile path fragments for efficiency
-            string binPathFragment = Path.DirectorySeparatorChar + ExportSettings.BinFolderName + Path.DirectorySeparatorChar;
-            string objPathFragment = Path.DirectorySeparatorChar + ExportSettings.ObjFolderName + Path.DirectorySeparatorChar;
-            string vsPathFragment = Path.DirectorySeparatorChar + ExportSettings.VsFolderName + Path.DirectorySeparatorChar;
+            // Pre-compile excluded folder path fragments for efficiency
+            var excludedFolderFragments = globallyExcludedFolders
+                 .Select(folder => Path.DirectorySeparatorChar + folder.ToLowerInvariant() + Path.DirectorySeparatorChar)
+                 .ToArray();
+
+             // Use HashSets for faster lookups
+             var blacklistedExtSet = new HashSet<string>(profile.BlacklistedExtensions, StringComparer.OrdinalIgnoreCase);
+             var blacklistedNameSet = new HashSet<string>(profile.BlacklistedFileNames, StringComparer.OrdinalIgnoreCase);
+
 
             return allFiles
-                .Where(f => IsFileValidForExport(f, lowerProjDir, binPathFragment, objPathFragment, vsPathFragment))
+                .AsParallel() // Process filtering in parallel for potential speedup
+                .Where(f => IsFileValidForExport(f, lowerProjDirWithSlash, excludedFolderFragments, blacklistedExtSet, blacklistedNameSet))
                 .Distinct()
+                .OrderBy(f => f) // Order after filtering and making distinct
                 .ToArray();
         }
 
-        private bool IsFileValidForExport(string filePath, string lowerProjDirWithSlash, string binFrag, string objFrag, string vsFrag)
+        private bool IsFileValidForExport(string filePath, string lowerProjDirWithSlash, string[] excludedFolderFragments, HashSet<string> blacklistedExtSet, HashSet<string> blacklistedNameSet)
         {
             try
             {
@@ -139,18 +185,24 @@ namespace AiCodeShareTool.Core
                 string fileName = Path.GetFileName(filePath);
                 string fileExtension = Path.GetExtension(filePath)?.ToLowerInvariant() ?? ""; // Includes the dot, handle null
 
-                bool isExcludedFolder = lowerFullFilePath.Contains(binFrag, StringComparison.OrdinalIgnoreCase) ||
-                                        lowerFullFilePath.Contains(objFrag, StringComparison.OrdinalIgnoreCase) ||
-                                        lowerFullFilePath.Contains(vsFrag, StringComparison.OrdinalIgnoreCase);
+                // Check if path contains any excluded folder fragment
+                bool isInExcludedFolder = excludedFolderFragments.Any(frag => lowerFullFilePath.Contains(frag, StringComparison.OrdinalIgnoreCase));
 
-                bool isBlacklisted = ExportSettings.BlacklistedFileNames.Contains(fileName) ||
-                                      (!string.IsNullOrEmpty(fileExtension) && ExportSettings.BlacklistedExtensions.Contains(fileExtension));
+                if (isInExcludedFolder) return false;
 
-                // Must be within project dir, not in excluded folders, and not blacklisted
-                // Ensure startsWith check includes the directory separator for exact match
-                return lowerFullFilePath.StartsWith(lowerProjDirWithSlash, StringComparison.OrdinalIgnoreCase) && !isExcludedFolder && !isBlacklisted;
+                bool isBlacklisted = blacklistedNameSet.Contains(fileName) ||
+                                     (!string.IsNullOrEmpty(fileExtension) && blacklistedExtSet.Contains(fileExtension));
+
+                if (isBlacklisted) return false;
+
+                // Must be within project dir (using StartsWith check with trailing slash)
+                return lowerFullFilePath.StartsWith(lowerProjDirWithSlash, StringComparison.OrdinalIgnoreCase);
             }
-            catch (Exception ex)
+            catch (PathTooLongException) {
+                _ui.DisplayWarning($"Path too long. Skipping file: '{filePath}'");
+                 return false;
+            }
+            catch (Exception ex) // Catch SecurityException, ArgumentException, etc.
             {
                 _ui.DisplayWarning($"Could not process path '{filePath}'. Skipping. Error: {ex.Message}");
                 return false;
@@ -159,24 +211,31 @@ namespace AiCodeShareTool.Core
 
         private void WriteExportFile(string projectDirectory, string exportFilePath, string[] codeFiles)
         {
-            using (StreamWriter writer = new StreamWriter(exportFilePath, false, Encoding.UTF8))
+            // Use UTF8 without BOM
+            var utf8EncodingWithoutBom = new UTF8Encoding(false);
+
+            using (StreamWriter writer = new StreamWriter(exportFilePath, false, utf8EncodingWithoutBom))
             {
                 writer.WriteLine($"{ExportSettings.ExportRootMarkerPrefix} {projectDirectory}{ExportSettings.MarkerSuffix}");
                 writer.WriteLine($"{ExportSettings.TimestampMarkerPrefix} {DateTime.Now:yyyy-MM-dd HH:mm:ss}{ExportSettings.MarkerSuffix}");
-                writer.WriteLine();
+                writer.WriteLine(); // Blank line after headers
 
-                foreach (string filePath in codeFiles.OrderBy(f => f))
+                foreach (string filePath in codeFiles) // Already ordered by FindAndFilterFiles
                 {
                     try
                     {
                         string relativePath = Path.GetRelativePath(projectDirectory, filePath);
-                        string markerPath = relativePath.Replace(Path.DirectorySeparatorChar, '/'); // Use forward slash for marker
+                        // Use forward slashes consistently in markers for cross-platform compatibility
+                        string markerPath = relativePath.Replace(Path.DirectorySeparatorChar, '/');
 
                         writer.WriteLine($"{ExportSettings.StartFileMarkerPrefix} {markerPath}{ExportSettings.MarkerSuffix}");
-                        writer.WriteLine();
+                        writer.WriteLine(); // Blank line before content
 
-                        string fileContent = File.ReadAllText(filePath, Encoding.UTF8); // Assume UTF-8
-                        writer.WriteLine(fileContent.TrimEnd('\r', '\n')); // Write content, trimming trailing newlines
+                        // Read file carefully, try detecting encoding if possible, fallback to UTF-8
+                        // For simplicity here, stick with reading as UTF-8, which covers many cases.
+                        // More robust solution would involve BOM detection or libraries like Ude.NetStandard
+                        string fileContent = File.ReadAllText(filePath, Encoding.UTF8);
+                        writer.WriteLine(fileContent.TrimEnd('\r', '\n')); // Write content, trimming trailing newlines only
 
                         writer.WriteLine(); // Blank line before end marker
                         writer.WriteLine($"{ExportSettings.EndFileMarkerPrefix} {markerPath}{ExportSettings.MarkerSuffix}");

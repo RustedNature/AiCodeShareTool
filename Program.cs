@@ -1,6 +1,6 @@
-﻿
 
 using AiCodeShareTool.UI;
+using AiCodeShareTool.Configuration; // Need this for ConfigurationService
 
 namespace AiCodeShareTool
 {
@@ -16,8 +16,17 @@ namespace AiCodeShareTool
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
 
-            // Create the main form
-            var mainForm = new MainForm();
+            // --- Dependency Setup ---
+            // Create instances of services and components
+            var appState = new ApplicationState(); // Still useful for paths
+            var configService = new InMemoryConfigurationService(); // Create the config service
+             // Set initial active profile in state if needed, or rely on service default
+             appState.ActiveLanguageProfileName = configService.GetActiveProfile().Name;
+
+             // Pass dependencies to the form constructor
+            var mainForm = new MainForm(appState, configService);
+            // --- End Dependency Setup ---
+
 
             // Run the application using the main form
             Application.Run(mainForm);

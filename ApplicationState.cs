@@ -1,4 +1,3 @@
-﻿
 
 namespace AiCodeShareTool
 {
@@ -10,5 +9,6 @@ namespace AiCodeShareTool
         public string? CurrentProjectDirectory { get; set; } = null;
         public string? CurrentExportFilePath { get; set; } = null;
         public string? CurrentImportFilePath { get; set; } = null;
+        public string? ActiveLanguageProfileName { get; set; } // Store the name of the active profile
     }
 }

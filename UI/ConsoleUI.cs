@@ -1,10 +1,13 @@
-﻿
+
 using System.Text;
 
 namespace AiCodeShareTool.UI
 {
     /// <summary>
     /// Implements the IUserInterface using the console and Windows Forms dialogs.
+    /// NOTE: This class is no longer used by the main WinForms application
+    /// but is kept for potential future CLI usage or reference.
+    /// It does NOT support the new features like language profile selection.
     /// </summary>
     public class ConsoleUI : IUserInterface
     {
@@ -14,42 +17,13 @@ namespace AiCodeShareTool.UI
             try { Console.OutputEncoding = Encoding.UTF8; } catch { /* Ignore if fails */ }
         }
 
-        public char ShowMainMenu()
-        {
-            Console.WriteLine("\nChoose an operation:");
-            Console.WriteLine(" E) Export Project");
-            Console.WriteLine(" I) Import Code");
-            Console.WriteLine(" C) Change Paths");
-            Console.WriteLine(" Q) Quit");
-            Console.Write("Enter your choice: ");
-            string? choice = Console.ReadLine()?.Trim().ToUpper();
-            return string.IsNullOrEmpty(choice) ? '\0' : choice[0];
-        }
-
-        public char AskChangePathChoice()
-        {
-            Console.WriteLine("\n-- Change Paths --");
-            Console.WriteLine("Select which path to change:");
-            Console.WriteLine(" 1) Project Directory");
-            Console.WriteLine(" 2) Export File Path");
-            Console.WriteLine(" 3) Import File Path");
-            Console.WriteLine(" Any other key to cancel");
-            Console.Write("Enter your choice: ");
-
-            var key = Console.ReadKey(intercept: true);
-            Console.WriteLine(); // Move to next line after key press
-
-            return key.KeyChar switch
-            {
-                '1' => '1',
-                '2' => '2',
-                '3' => '3',
-                _ => '\0', // Represents cancel or invalid choice
-            };
-        }
+        // --- Methods no longer directly applicable or need updates ---
+        // public char ShowMainMenu() { ... } // Needs update for profile selection
+        // public char AskChangePathChoice() { ... }
 
         public string? GetDirectoryPath(string description, string? currentPath, bool askUseCurrent = true)
         {
+            // The core logic using FolderBrowserDialog remains valid if STAThread is ensured
             if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
             {
                 if (AskToUseCurrentPath("directory", currentPath))
@@ -63,106 +37,148 @@ namespace AiCodeShareTool.UI
                 }
             }
 
-            using (var dialog = new FolderBrowserDialog())
+            // Ensure STAThread for console apps using WinForms dialogs
+            string? selectedPath = null;
+            Thread staThread = new Thread(() =>
             {
-                dialog.Description = description;
-                dialog.UseDescriptionForTitle = true;
-                dialog.ShowNewFolderButton = true;
-                SetInitialDialogPath(dialog, currentPath);
-
-                DisplayMessage($"\nPlease select the directory: {description}");
-                DialogResult result = dialog.ShowDialog(); // Requires STAThread
-
-                if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.SelectedPath))
+                try
                 {
-                    DisplayMessage($"Selected Path: {dialog.SelectedPath}");
-                    return dialog.SelectedPath;
+                    using (var dialog = new FolderBrowserDialog())
+                    {
+                        dialog.Description = description;
+                        dialog.UseDescriptionForTitle = true;
+                        dialog.ShowNewFolderButton = true;
+                        SetInitialDialogPath(dialog, currentPath); // Helper method needs context or rework
+
+                        Console.WriteLine($"\nPlease select the directory: {description} (Dialog should appear)");
+                        DialogResult result = dialog.ShowDialog(); // Requires STAThread
+
+                        if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.SelectedPath))
+                        {
+                            selectedPath = dialog.SelectedPath;
+                            Console.WriteLine($"Selected Path: {selectedPath}"); // Feedback in console
+                        }
+                        else
+                        {
+                            Console.WriteLine("Operation cancelled or no folder selected."); // Feedback
+                        }
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    DisplayWarning("Operation cancelled or no folder selected.");
-                    return null;
+                     Console.WriteLine($"Error showing folder browser: {ex.Message}");
                 }
-            }
+            });
+            staThread.SetApartmentState(ApartmentState.STA);
+            staThread.Start();
+            staThread.Join(); // Wait for the dialog thread to complete
+
+            if(selectedPath == null) DisplayWarning("Directory selection failed or was cancelled.");
+
+            return selectedPath; // Return result from STA thread
         }
 
-        public string? GetSaveFilePath(string title, string filter, string defaultExt, string? currentPath, bool askUseCurrent = true)
+         public string? GetSaveFilePath(string title, string filter, string defaultExt, string? currentPath, bool askUseCurrent = true)
         {
+            // Similar STAThread requirement as GetDirectoryPath
             if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
             {
-                if (AskToUseCurrentPath("file path", currentPath))
-                {
-                    // No need to check existence for save dialog
-                    return currentPath;
-                }
-                else
-                {
-                    DisplayMessage("Proceeding to select a new file path...");
-                }
+                if (AskToUseCurrentPath("file path", currentPath)) return currentPath;
+                else DisplayMessage("Proceeding to select a new file path...");
             }
 
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Title = title;
-                dialog.Filter = filter;
-                dialog.DefaultExt = defaultExt;
-                dialog.AddExtension = true;
-                dialog.OverwritePrompt = true;
-                SetInitialDialogPath(dialog, currentPath);
+            string? selectedPath = null;
+             Thread staThread = new Thread(() =>
+             {
+                 try
+                 {
+                     using (var dialog = new SaveFileDialog())
+                     {
+                         dialog.Title = title;
+                         dialog.Filter = filter;
+                         dialog.DefaultExt = defaultExt;
+                         dialog.AddExtension = true;
+                         dialog.OverwritePrompt = true;
+                         SetInitialDialogPath(dialog, currentPath);
 
-                DisplayMessage($"\nPlease select the file: {title}");
-                DialogResult result = dialog.ShowDialog(); // Requires STAThread
+                         Console.WriteLine($"\nPlease select the file: {title} (Dialog should appear)");
+                         DialogResult result = dialog.ShowDialog(); // Requires STAThread
 
-                if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
-                {
-                    DisplayMessage($"Selected File: {dialog.FileName}");
-                    return dialog.FileName;
-                }
-                else
-                {
-                    DisplayWarning("Operation cancelled or no file selected.");
-                    return null;
-                }
-            }
+                         if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
+                         {
+                             selectedPath = dialog.FileName;
+                             Console.WriteLine($"Selected File: {selectedPath}");
+                         }
+                         else
+                         {
+                             Console.WriteLine("Operation cancelled or no file selected.");
+                         }
+                     }
+                 }
+                  catch (Exception ex)
+                 {
+                      Console.WriteLine($"Error showing save file dialog: {ex.Message}");
+                 }
+             });
+             staThread.SetApartmentState(ApartmentState.STA);
+             staThread.Start();
+             staThread.Join();
+
+             if(selectedPath == null) DisplayWarning("Save file selection failed or was cancelled.");
+             return selectedPath;
         }
 
         public string? GetOpenFilePath(string title, string filter, string? currentPath, bool askUseCurrent = true)
         {
-            if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
+             // Similar STAThread requirement as GetDirectoryPath
+             if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
             {
                 if (AskToUseCurrentPath("file", currentPath))
                 {
-                    if (File.Exists(currentPath)) return currentPath;
-                    DisplayWarning("Current file no longer exists. Please select a new one.");
+                     if (File.Exists(currentPath)) return currentPath;
+                     DisplayWarning("Current file no longer exists. Please select a new one.");
                 }
-                else
-                {
-                    DisplayMessage("Proceeding to select a new file path...");
-                }
+                 else DisplayMessage("Proceeding to select a new file path...");
             }
 
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Title = title;
-                dialog.Filter = filter;
-                dialog.CheckFileExists = true;
-                dialog.Multiselect = false;
-                SetInitialDialogPath(dialog, currentPath);
+             string? selectedPath = null;
+             Thread staThread = new Thread(() =>
+             {
+                 try
+                 {
+                     using (var dialog = new OpenFileDialog())
+                     {
+                         dialog.Title = title;
+                         dialog.Filter = filter;
+                         dialog.CheckFileExists = true;
+                         dialog.Multiselect = false;
+                         SetInitialDialogPath(dialog, currentPath);
 
-                DisplayMessage($"\nPlease select the file: {title}");
-                DialogResult result = dialog.ShowDialog(); // Requires STAThread
+                         Console.WriteLine($"\nPlease select the file: {title} (Dialog should appear)");
+                         DialogResult result = dialog.ShowDialog(); // Requires STAThread
 
-                if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
-                {
-                    DisplayMessage($"Selected File: {dialog.FileName}");
-                    return dialog.FileName;
-                }
-                else
-                {
-                    DisplayWarning("Operation cancelled or no file selected.");
-                    return null;
-                }
-            }
+                         if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
+                         {
+                             selectedPath = dialog.FileName;
+                             Console.WriteLine($"Selected File: {selectedPath}");
+                         }
+                         else
+                         {
+                              Console.WriteLine("Operation cancelled or no file selected.");
+                         }
+                     }
+                 }
+                  catch (Exception ex)
+                 {
+                      Console.WriteLine($"Error showing open file dialog: {ex.Message}");
+                 }
+             });
+             staThread.SetApartmentState(ApartmentState.STA);
+             staThread.Start();
+             staThread.Join();
+
+             if(selectedPath == null) DisplayWarning("Open file selection failed or was cancelled.");
+             return selectedPath;
         }
 
 
@@ -180,48 +196,36 @@ namespace AiCodeShareTool.UI
             return false;
         }
 
+        // This helper needs careful handling in STA thread context or rework
         private void SetInitialDialogPath(CommonDialog dialog, string? currentPath)
         {
             if (string.IsNullOrEmpty(currentPath)) return;
-
-            try
+             try
             {
+                 // Basic logic, might need refinement for STA context if it accesses UI elements indirectly
                 string? initialDir = null;
                 string? initialFileName = null;
 
+                 if (Directory.Exists(currentPath)) initialDir = currentPath;
+                 else {
+                     initialDir = Path.GetDirectoryName(currentPath);
+                     initialFileName = Path.GetFileName(currentPath);
+                 }
+
                 if (dialog is FileDialog fileDialog)
                 {
-                    initialDir = Path.GetDirectoryName(currentPath);
-                    initialFileName = Path.GetFileName(currentPath);
-                    if (!string.IsNullOrEmpty(initialFileName))
-                    {
-                        fileDialog.FileName = initialFileName;
-                    }
+                    if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir)) fileDialog.InitialDirectory = initialDir;
+                    if (!string.IsNullOrEmpty(initialFileName)) fileDialog.FileName = initialFileName;
                 }
                 else if (dialog is FolderBrowserDialog folderDialog)
                 {
-                    // FolderBrowserDialog expects SelectedPath to be the directory itself
-                    if (Directory.Exists(currentPath)) initialDir = currentPath;
-                    else initialDir = Path.GetDirectoryName(currentPath); // Fallback to parent if file path was given
+                     if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir)) folderDialog.SelectedPath = initialDir;
                 }
-
-
-                if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
-                {
-                    // Set InitialDirectory for FileDialogs, SelectedPath for FolderBrowserDialog
-                    if (dialog is FileDialog fd) fd.InitialDirectory = initialDir;
-                    else if (dialog is FolderBrowserDialog fbd) fbd.SelectedPath = initialDir;
-                }
-                // No else needed, dialog defaults to a standard location
             }
-            catch (ArgumentException)
+             catch (Exception ex) // Catch broad errors
             {
-                // Handle cases like invalid chars or UNC paths FBD doesn't like
-                DisplayWarning("Warning: Could not set initial path (possibly invalid characters or network path issue). Starting from default location.");
-            }
-            catch (Exception ex) // Catch broader errors during path manipulation
-            {
-                DisplayWarning($"Warning: Unexpected error setting initial path: {ex.Message}. Starting from default location.");
+                 // Log to console instead of UI warning
+                 Console.WriteLine($"Warning: Could not set initial path for dialog: {ex.Message}");
             }
         }
 
@@ -252,15 +256,10 @@ namespace AiCodeShareTool.UI
             Console.ResetColor();
         }
 
-        public void WaitForEnter()
+         public void ClearOutput()
         {
-            Console.WriteLine("\nPress Enter to continue...");
-            Console.ReadLine();
-        }
-
-        public void ClearOutput()
-        {
-            throw new NotImplementedException();
+             // Best effort for console
+             try { Console.Clear(); } catch (IOException) { /* May fail if console redirected */ }
         }
     }
 }

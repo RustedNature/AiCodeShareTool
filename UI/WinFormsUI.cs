@@ -1,4 +1,3 @@
-﻿
 
 namespace AiCodeShareTool.UI
 {
@@ -102,7 +101,15 @@ namespace AiCodeShareTool.UI
                 {
                      initialDir = Path.GetDirectoryName(currentPath);
                      // If GetDirectoryName returns null (e.g., just "file.txt"), don't use it
-                     if(initialDir == null) initialFileName = currentPath; // Treat as filename only
+                     if(initialDir == null && !string.IsNullOrEmpty(currentPath) && currentPath.IndexOfAny(Path.GetInvalidFileNameChars()) == -1)
+                     {
+                         // Treat as filename only if it looks like a valid filename part
+                         initialFileName = currentPath;
+                     }
+                     else if (string.IsNullOrEmpty(initialDir)) {
+                         // Don't try to use null or empty dir
+                         initialDir = null;
+                     }
                 }
 
 
@@ -183,13 +190,15 @@ namespace AiCodeShareTool.UI
         // Helper to execute an action on the UI thread if needed
         private void SafeAction(Action action)
         {
+            if (_owner.IsDisposed || _statusOutput.IsDisposed) return; // Prevent errors during shutdown
+
             if (_statusOutput.InvokeRequired)
             {
-                _statusOutput.Invoke(action);
+                try { _statusOutput.Invoke(action); } catch (ObjectDisposedException) { /* Ignore if disposed during invoke */ }
             }
             else
             {
-                action();
+                 try { action(); } catch (ObjectDisposedException) { /* Ignore if disposed during action */ }
             }
         }
 

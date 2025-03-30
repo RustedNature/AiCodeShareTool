@@ -1,4 +1,4 @@
-﻿
+
 # AiCodeShareTool
 
 A simple Windows Forms application to export the text-based files from a project directory into a single, structured text file (suitable for sharing with AI models) and to import such a file back into a directory structure.
@@ -8,13 +8,15 @@ A simple Windows Forms application to export the text-based files from a project
 *   **Export:**
     *   Select a project root directory.
     *   Select an output text file path.
-    *   Recursively finds code/config files (based on common extensions).
-    *   Excludes `bin`, `obj`, `.vs` folders.
-    *   Excludes configurable file types/names (e.g., `.user`, `.log`, `launchSettings.json`).
-    *   Writes all found file contents into the output file, delimited by markers indicating the relative path.
+    *   **Language Profiles:** Select a configuration profile (e.g., ".NET", "Python", "Generic Text") to control which files are included.
+        *   Each profile defines specific file search patterns (e.g., `*.cs`, `*.py`).
+        *   Each profile defines blacklisted file extensions and specific filenames to exclude.
+    *   Recursively finds files based on the selected profile's patterns.
+    *   Excludes common unwanted folders globally (`bin`, `obj`, `.vs`, `.git`, `node_modules`).
+    *   Writes all found file contents into the output file, delimited by standard markers indicating the relative path.
 *   **Import:**
     *   Select a target root directory (where the project structure should be recreated).
-    *   Select the structured text file to import from.
+    *   Select the structured text file to import from (format is language-agnostic).
     *   Parses the file based on the start/end file markers.
     *   Recreates the directory structure under the target directory.
     *   Writes the content for each file found in the import file.
@@ -22,6 +24,7 @@ A simple Windows Forms application to export the text-based files from a project
 *   **GUI:**
     *   Simple Windows Forms interface.
     *   Uses standard file/folder browse dialogs.
+    *   Dropdown to select the Language Profile for export.
     *   Displays status messages, warnings, and errors in a text area.
 
 ## Building and Running
@@ -34,12 +37,17 @@ A simple Windows Forms application to export the text-based files from a project
 ## Usage
 
 1.  **Project Directory:** Click "Browse..." to select the root folder of the project you want to export from or import into.
-2.  **Export File Path:** Click "Browse..." to select the `.txt` file where the exported code should be saved (for Export) or the file containing the code to be imported (for Import).
-3.  **Click "Export Project":** To gather files from the Project Directory and save them to the Export File Path.
-4.  **Click "Import Code":** To read the Export File Path and recreate the files/folders within the Project Directory.
-5.  Observe the status messages in the text area below the buttons.
+2.  **Export File Path:** Click "Browse..." to select the `.txt` file where the exported code should be saved.
+3.  **Import File Path:** Click "Browse..." to select the `.txt` file containing the code to be imported.
+4.  **Language Profile:** Select the appropriate profile from the dropdown *before* exporting. This determines which files are included.
+5.  **Click "Export Project":** To gather files from the Project Directory (using the selected Language Profile) and save them to the Export File Path.
+6.  **Click "Import Code":** To read the Import File Path and recreate the files/folders within the Project Directory. This operation ignores the selected language profile as the file format dictates the content.
+7.  Observe the status messages in the text area below the buttons.
 
 ## Configuration
 
-*   **File Exclusions:** Edit the `BlacklistedExtensions` and `BlacklistedFileNames` sets in `Configuration/ExportSettings.cs` to customize which files are ignored during export.
-*   **Search Patterns:** Modify `DefaultSearchPatterns` in `Configuration/ExportSettings.cs` to change which file types are included in the export.
+*   **Language Profiles:** Edit the `InitializeProfiles` method in `Configuration/InMemoryConfigurationService.cs` to:
+    *   Modify existing profiles (search patterns, blacklists).
+    *   Add new profiles for other languages or project types.
+*   **Global Exclusions:** Edit the list of excluded folders in `Core/FileSystemExporter.cs` (`excludedFolders` variable within the `Export` method) if needed.
+*   **File Format:** Marker constants are defined in `Configuration/ExportSettings.cs`.
