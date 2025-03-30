@@ -1,7 +1,7 @@
 
 # AiCodeShareTool
 
-**Disclaimer:** This program was developed entirely by the Gemini 1.5 Pro language model from Google AI, based on a series of prompts defining requirements and requesting code generation and modifications.
+**Disclaimer:** This program was developed entirely by the Gemini 2.5 Pro language model from Google AI, based on a series of prompts defining requirements and requesting code generation and modifications.
 
 A simple Windows Forms application to export the text-based files from a project directory into a single, structured text file (suitable for sharing with AI models) and to import such a file back into a directory structure.
 
@@ -70,7 +70,7 @@ A simple Windows Forms application to export the text-based files from a project
 
 ## AI Interaction Format (System Instruction)
 
-This tool is designed to facilitate code sharing with AI models. The AI used to generate this tool (Gemini 1.5 Pro) expects interactions using the following format when requesting code updates or generation:
+This tool is designed to facilitate code sharing with AI models. The AI used to generate this tool (Gemini 2.5 Pro) expects interactions using the following format when requesting code updates or generation:
 
 ```text
 Output Only New/Edited Files: Your response MUST only contain files that are newly created or have been edited/modified according to the current request. Do NOT include files requested in previous interactions if they remain unchanged.
