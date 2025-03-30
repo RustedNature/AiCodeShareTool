@@ -1,0 +1,11 @@
+﻿
+{
+  // Removed profiles as they refer to specific paths and might not be useful for sharing
+  // You can add profiles back manually in VS if needed for specific testing scenarios.
+  // Example structure:
+  // "profiles": {
+  //   "AiCodeShareTool_Default": {
+  //      "commandName": "Project"
+  //   }
+  // }
+}

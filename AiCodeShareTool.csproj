@@ -1,0 +1,19 @@
+﻿
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+
+		<!-- Make sure this targets your .NET version AND includes -windows -->
+		<TargetFramework>net9.0-windows</TargetFramework>
+		<!-- Or net8.0-windows, net7.0-windows etc. -->
+
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- This line enables Windows Forms features -->
+		<UseWindowsForms>true</UseWindowsForms>
+
+	</PropertyGroup>
+
+</Project>

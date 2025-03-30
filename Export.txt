@@ -1,0 +1,1033 @@
+﻿// === Export Root: Z:\dev\0Projects\AiCodeShareTool ===
+// === Timestamp: 2025-03-30 17:49:08 ===
+
+// === Start File: AiCodeShareTool.csproj ===
+
+
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+
+		<!-- Make sure this targets your .NET version AND includes -windows -->
+		<TargetFramework>net9.0-windows</TargetFramework>
+		<!-- Or net8.0-windows, net7.0-windows etc. -->
+
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- This line enables Windows Forms features -->
+		<UseWindowsForms>true</UseWindowsForms>
+
+	</PropertyGroup>
+
+</Project>
+
+// === End File: AiCodeShareTool.csproj ===
+
+// === Start File: AiCodeShareTool.sln ===
+
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35919.96
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AiCodeShareTool", "AiCodeShareTool.csproj", "{087E6EAC-7068-0C02-174E-F380830D21DC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{087E6EAC-7068-0C02-174E-F380830D21DC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{087E6EAC-7068-0C02-174E-F380830D21DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{087E6EAC-7068-0C02-174E-F380830D21DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{087E6EAC-7068-0C02-174E-F380830D21DC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3AB1B7E0-C9A0-443F-A236-D658AE235D9A}
+	EndGlobalSection
+EndGlobal
+
+// === End File: AiCodeShareTool.sln ===
+
+// === Start File: ApplicationState.cs ===
+
+
+namespace AiCodeShareTool
+{
+    /// <summary>
+    /// Holds the mutable state of the application, like last used paths.
+    /// </summary>
+    public class ApplicationState
+    {
+        public string? CurrentProjectDirectory { get; set; } = null;
+        public string? CurrentExportFilePath { get; set; } = null;
+        public string? CurrentImportFilePath { get; set; } = null;
+    }
+}
+
+// === End File: ApplicationState.cs ===
+
+// === Start File: Configuration/ExportSettings.cs ===
+
+
+namespace AiCodeShareTool.Configuration
+{
+    /// <summary>
+    /// Holds configuration settings specific to the export process.
+    /// </summary>
+    public static class ExportSettings
+    {
+        // Add lowercase extensions (starting with '.') or specific filenames to exclude
+        public static readonly HashSet<string> BlacklistedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".user", // Visual Studio user settings
+            ".suo",  // Visual Studio solution user options (older)
+            ".log",  // Log files
+            ".tmp",  // Temporary files
+            ".pdb",  // Debug symbols (usually not needed for code review)
+            ".bak",  // Backup files
+            // Add other extensions as needed
+        };
+
+        public static readonly HashSet<string> BlacklistedFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+             "launchSettings.json",
+             ".gitignore",
+             "package-lock.json", // Often large and generated
+             // Add other specific filenames if needed
+        };
+
+        public static readonly string[] DefaultSearchPatterns = {
+            "*.cs", "*.xaml", "*.csproj", "*.sln", "*.json", "*.xml", "*.config", "*.md", "*.gitignore",
+            "*.razor", "*.css", "*.js", "*.html", "*.htm", "*.props", "*.targets"
+        };
+
+        public static readonly string BinFolderName = "bin";
+        public static readonly string ObjFolderName = "obj";
+        public static readonly string VsFolderName = ".vs";
+
+        public const string StartFileMarkerPrefix = "// === Start File:";
+        public const string EndFileMarkerPrefix = "// === End File:";
+        public const string ExportRootMarkerPrefix = "// === Export Root:";
+        public const string TimestampMarkerPrefix = "// === Timestamp:";
+        public const string MarkerSuffix = " ===";
+    }
+}
+
+// === End File: Configuration/ExportSettings.cs ===
+
+// === Start File: Core/FileSystemExporter.cs ===
+
+
+using System.Text;
+using AiCodeShareTool.Configuration;
+
+namespace AiCodeShareTool.Core
+{
+    /// <summary>
+    /// Implements the export functionality using the local file system.
+    /// </summary>
+    public class FileSystemExporter : IExporter
+    {
+        private readonly IUserInterface _ui;
+
+        public FileSystemExporter(IUserInterface ui)
+        {
+            _ui = ui ?? throw new ArgumentNullException(nameof(ui));
+        }
+
+        public void Export(string projectDirectory, string exportFilePath)
+        {
+            if (!ValidateInputs(projectDirectory, exportFilePath)) return;
+
+            try
+            {
+                EnsureExportDirectoryExists(exportFilePath);
+
+                _ui.DisplayMessage($"Searching for files in '{projectDirectory}' (applying blacklist and excluding {ExportSettings.BinFolderName}/{ExportSettings.ObjFolderName}/{ExportSettings.VsFolderName})...");
+
+                var codeFiles = FindAndFilterFiles(projectDirectory);
+
+                if (codeFiles.Length == 0)
+                {
+                    _ui.DisplayWarning($"No suitable, non-blacklisted files found matching patterns in '{projectDirectory}'.");
+                    return;
+                }
+
+                _ui.DisplayMessage($"Found {codeFiles.Length} file(s) after filtering. Exporting to '{exportFilePath}'...");
+
+                WriteExportFile(projectDirectory, exportFilePath, codeFiles);
+
+                _ui.DisplaySuccess($"Export completed successfully to '{exportFilePath}'.");
+            }
+            catch (UnauthorizedAccessException ex) { _ui.DisplayError($"Access denied during export. {ex.Message}"); }
+            catch (IOException ex) { _ui.DisplayError($"I/O error during export setup/write. {ex.Message}"); }
+            catch (Exception ex) { _ui.DisplayError($"Unexpected error during export. {ex.Message}"); }
+        }
+
+        private bool ValidateInputs(string projectDirectory, string exportFilePath)
+        {
+            if (!Directory.Exists(projectDirectory))
+            {
+                _ui.DisplayError($"Project directory '{projectDirectory}' not found or inaccessible.");
+                return false;
+            }
+            if (string.IsNullOrEmpty(exportFilePath))
+            {
+                _ui.DisplayError("Export file path is invalid.");
+                return false;
+            }
+            return true;
+        }
+
+        private void EnsureExportDirectoryExists(string exportFilePath)
+        {
+            string? exportDir = Path.GetDirectoryName(exportFilePath);
+            if (!string.IsNullOrEmpty(exportDir) && !Directory.Exists(exportDir))
+            {
+                try
+                {
+                    Directory.CreateDirectory(exportDir);
+                    _ui.DisplayMessage($"Creating directory: {exportDir}");
+                }
+                catch (Exception ex)
+                {
+                    throw new IOException($"Error creating export directory '{exportDir}': {ex.Message}", ex);
+                }
+            }
+        }
+
+        private string[] FindAndFilterFiles(string projectDirectory)
+        {
+            List<string> allFiles = new List<string>();
+            EnumerationOptions enumOptions = new EnumerationOptions()
+            {
+                IgnoreInaccessible = true,
+                RecurseSubdirectories = true
+            };
+
+            foreach (string pattern in ExportSettings.DefaultSearchPatterns)
+            {
+                try { allFiles.AddRange(Directory.EnumerateFiles(projectDirectory, pattern, enumOptions)); }
+                catch (Exception ex) { _ui.DisplayWarning($"Error enumerating files for pattern '{pattern}': {ex.Message}"); }
+            }
+
+            string fullProjDirPath = Path.GetFullPath(projectDirectory);
+            string lowerProjDir = fullProjDirPath.ToLowerInvariant();
+
+            // Pre-compile path fragments for efficiency
+            string binPathFragment = Path.DirectorySeparatorChar + ExportSettings.BinFolderName + Path.DirectorySeparatorChar;
+            string objPathFragment = Path.DirectorySeparatorChar + ExportSettings.ObjFolderName + Path.DirectorySeparatorChar;
+            string vsPathFragment = Path.DirectorySeparatorChar + ExportSettings.VsFolderName + Path.DirectorySeparatorChar;
+
+            return allFiles
+                .Where(f => IsFileValidForExport(f, lowerProjDir, binPathFragment, objPathFragment, vsPathFragment))
+                .Distinct()
+                .ToArray();
+        }
+
+        private bool IsFileValidForExport(string filePath, string lowerProjDir, string binFrag, string objFrag, string vsFrag)
+        {
+            try
+            {
+                string fullFilePath = Path.GetFullPath(filePath); // Resolve symlinks etc.
+                string lowerFullFilePath = fullFilePath.ToLowerInvariant();
+                string fileName = Path.GetFileName(filePath);
+                string fileExtension = Path.GetExtension(filePath); // Includes the dot
+
+                bool isExcludedFolder = lowerFullFilePath.Contains(binFrag, StringComparison.OrdinalIgnoreCase) ||
+                                        lowerFullFilePath.Contains(objFrag, StringComparison.OrdinalIgnoreCase) ||
+                                        lowerFullFilePath.Contains(vsFrag, StringComparison.OrdinalIgnoreCase);
+
+                bool isBlacklisted = ExportSettings.BlacklistedFileNames.Contains(fileName) ||
+                                      (!string.IsNullOrEmpty(fileExtension) && ExportSettings.BlacklistedExtensions.Contains(fileExtension));
+
+                // Must be within project dir, not in excluded folders, and not blacklisted
+                return lowerFullFilePath.StartsWith(lowerProjDir, StringComparison.OrdinalIgnoreCase) && !isExcludedFolder && !isBlacklisted;
+            }
+            catch (Exception ex)
+            {
+                _ui.DisplayWarning($"Could not process path '{filePath}'. Skipping. Error: {ex.Message}");
+                return false;
+            }
+        }
+
+        private void WriteExportFile(string projectDirectory, string exportFilePath, string[] codeFiles)
+        {
+            using (StreamWriter writer = new StreamWriter(exportFilePath, false, Encoding.UTF8))
+            {
+                writer.WriteLine($"{ExportSettings.ExportRootMarkerPrefix} {projectDirectory}{ExportSettings.MarkerSuffix}");
+                writer.WriteLine($"{ExportSettings.TimestampMarkerPrefix} {DateTime.Now:yyyy-MM-dd HH:mm:ss}{ExportSettings.MarkerSuffix}");
+                writer.WriteLine();
+
+                foreach (string filePath in codeFiles.OrderBy(f => f))
+                {
+                    try
+                    {
+                        string relativePath = Path.GetRelativePath(projectDirectory, filePath);
+                        string markerPath = relativePath.Replace(Path.DirectorySeparatorChar, '/'); // Use forward slash for marker
+
+                        writer.WriteLine($"{ExportSettings.StartFileMarkerPrefix} {markerPath}{ExportSettings.MarkerSuffix}");
+                        writer.WriteLine();
+
+                        string fileContent = File.ReadAllText(filePath, Encoding.UTF8); // Assume UTF-8
+                        writer.WriteLine(fileContent.TrimEnd('\r', '\n')); // Write content, trimming trailing newlines
+
+                        writer.WriteLine(); // Blank line before end marker
+                        writer.WriteLine($"{ExportSettings.EndFileMarkerPrefix} {markerPath}{ExportSettings.MarkerSuffix}");
+                        writer.WriteLine(); // Blank line after end marker
+                    }
+                    catch (IOException readEx) { _ui.DisplayWarning($"Could not read file '{filePath}'. Skipping. Error: {readEx.Message}"); }
+                    catch (Exception fileEx) { _ui.DisplayWarning($"An unexpected error occurred processing file '{filePath}'. Skipping. Error: {fileEx.Message}"); }
+                }
+            }
+        }
+    }
+}
+
+// === End File: Core/FileSystemExporter.cs ===
+
+// === Start File: Core/FileSystemImporter.cs ===
+
+
+using System.Text;
+using AiCodeShareTool.Configuration;
+
+namespace AiCodeShareTool.Core
+{
+    /// <summary>
+    /// Implements the import functionality using the local file system.
+    /// </summary>
+    public class FileSystemImporter : IImporter
+    {
+        private readonly IUserInterface _ui;
+
+        public FileSystemImporter(IUserInterface ui)
+        {
+            _ui = ui ?? throw new ArgumentNullException(nameof(ui));
+        }
+
+        public void Import(string projectDirectory, string importFilePath)
+        {
+            if (!ValidateInputs(projectDirectory, importFilePath)) return;
+
+            _ui.DisplayMessage($"Starting import from '{importFilePath}' into '{projectDirectory}'...");
+            int filesImported = 0;
+            int filesSkipped = 0;
+            string? currentRelativePath = null;
+            StringBuilder fileContentBuilder = new StringBuilder();
+            bool readingFileContent = false;
+            int lineNumber = 0;
+
+            try
+            {
+                using (StreamReader reader = new StreamReader(importFilePath, Encoding.UTF8))
+                {
+                    string? line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        lineNumber++;
+                        string trimmedLine = line.Trim();
+
+                        if (trimmedLine.StartsWith(ExportSettings.StartFileMarkerPrefix) && trimmedLine.EndsWith(ExportSettings.MarkerSuffix))
+                        {
+                            if (readingFileContent && !string.IsNullOrEmpty(currentRelativePath))
+                            {
+                                _ui.DisplayWarning($"Line ~{lineNumber}: Found new start marker before end marker for '{currentRelativePath}'. Skipping previous partial content.");
+                                filesSkipped++;
+                            }
+
+                            currentRelativePath = ExtractPathFromMarker(trimmedLine, ExportSettings.StartFileMarkerPrefix);
+
+                            if (!IsPathValidForImport(currentRelativePath, lineNumber))
+                            {
+                                currentRelativePath = null;
+                                readingFileContent = false;
+                                filesSkipped++;
+                                continue;
+                            }
+
+                            currentRelativePath = currentRelativePath.Replace('/', Path.DirectorySeparatorChar);
+                            readingFileContent = true;
+                            fileContentBuilder.Clear();
+                        }
+                        else if (trimmedLine.StartsWith(ExportSettings.EndFileMarkerPrefix) && trimmedLine.EndsWith(ExportSettings.MarkerSuffix) && readingFileContent)
+                        {
+                            if (currentRelativePath == null)
+                            {
+                                _ui.DisplayWarning($"Line {lineNumber}: Found end marker without a corresponding valid start marker. Ignoring.");
+                                continue;
+                            }
+
+                            string endMarkerPathRaw = ExtractPathFromMarker(trimmedLine, ExportSettings.EndFileMarkerPrefix);
+                            if (string.IsNullOrWhiteSpace(endMarkerPathRaw))
+                            {
+                                 _ui.DisplayWarning($"Line {lineNumber}: Found end marker with invalid/empty path. Ignoring.");
+                                 continue;
+                            }
+                            string endMarkerPath = endMarkerPathRaw.Replace('/', Path.DirectorySeparatorChar);
+
+                            if (endMarkerPath.Equals(currentRelativePath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (WriteImportedFile(projectDirectory, currentRelativePath, fileContentBuilder))
+                                {
+                                    filesImported++;
+                                }
+                                else
+                                {
+                                    filesSkipped++; // WriteImportedFile logs specific errors
+                                }
+                            }
+                            else
+                            {
+                                _ui.DisplayWarning($"Line {lineNumber}: End marker path '{endMarkerPath}' did not match expected '{currentRelativePath}'. Skipping content block.");
+                                filesSkipped++;
+                            }
+
+                            readingFileContent = false;
+                            currentRelativePath = null;
+                            fileContentBuilder.Clear();
+                        }
+                        else if (readingFileContent && currentRelativePath != null)
+                        {
+                            // Add line to content buffer, preserving original line endings potentially
+                            fileContentBuilder.AppendLine(line);
+                        }
+                        // Ignore lines outside of start/end blocks (like headers or blank lines between files)
+                    }
+                } // End using StreamReader
+
+                if (readingFileContent && !string.IsNullOrEmpty(currentRelativePath))
+                {
+                    _ui.DisplayWarning($"Reached end of import file while still reading content for '{currentRelativePath}'. File might be truncated or missing end marker. Skipping final content block.");
+                    filesSkipped++;
+                }
+
+                _ui.DisplaySuccess($"\nImport finished. {filesImported} file(s) processed, {filesSkipped} file block(s) skipped due to warnings or errors.");
+
+            }
+            catch (IOException ex) { _ui.DisplayError($"An I/O error occurred during import file reading: {ex.Message}"); }
+            catch (OutOfMemoryException oomEx) { _ui.DisplayError($"Out of memory, the import file might be too large. {oomEx.Message}"); }
+            catch (Exception ex) { _ui.DisplayError($"An unexpected error occurred during import parsing: {ex.Message}"); }
+        }
+
+        private bool ValidateInputs(string projectDirectory, string importFilePath)
+        {
+            if (!Directory.Exists(projectDirectory))
+            {
+                _ui.DisplayError($"Project directory '{projectDirectory}' does not exist.");
+                return false;
+            }
+            if (!File.Exists(importFilePath))
+            {
+                _ui.DisplayError($"Import file '{importFilePath}' does not exist.");
+                return false;
+            }
+            return true;
+        }
+
+        private string? ExtractPathFromMarker(string line, string prefix)
+        {
+            if (!line.StartsWith(prefix) || !line.EndsWith(ExportSettings.MarkerSuffix)) return null;
+
+            int startIndex = prefix.Length;
+            int endIndex = line.Length - ExportSettings.MarkerSuffix.Length;
+            if (endIndex <= startIndex) return null; // Empty path
+
+            return line.Substring(startIndex, endIndex - startIndex).Trim();
+        }
+
+        private bool IsPathValidForImport(string? relativePath, int lineNumber)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                _ui.DisplayWarning($"Line {lineNumber}: Invalid empty path in marker. Skipping block.");
+                return false;
+            }
+            // Basic check for invalid path characters and directory traversal
+            if (relativePath.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || relativePath.Contains(".."))
+            {
+                _ui.DisplayWarning($"Line {lineNumber}: Invalid or potentially unsafe path detected in marker ('{relativePath}'). Skipping block.");
+                return false;
+            }
+            return true;
+        }
+
+
+        private bool WriteImportedFile(string baseDirectory, string relativePath, StringBuilder contentBuilder)
+        {
+            string fullPath;
+            // Get final content and trim trailing empty lines only
+            string content = contentBuilder.ToString().TrimEnd('\r', '\n');
+
+            try
+            {
+                // Combine first, then get full path for security check
+                string combinedPath = Path.Combine(baseDirectory, relativePath);
+                fullPath = Path.GetFullPath(combinedPath);
+
+                // **Security Check:** Prevent writing outside the intended project directory
+                string fullBasePathCanonical = Path.GetFullPath(baseDirectory + Path.DirectorySeparatorChar); // Ensure trailing slash for comparison
+                if (!fullPath.StartsWith(fullBasePathCanonical, StringComparison.OrdinalIgnoreCase))
+                {
+                    _ui.DisplayWarning($"  Security Warning: Skipping file '{relativePath}'. Target path '{fullPath}' is outside the base project directory '{fullBasePathCanonical}'.");
+                    return false;
+                }
+            }
+            catch (ArgumentException argEx) { _ui.DisplayError($"  Error creating path for '{relativePath}'. Skipping. {argEx.Message}"); return false; }
+            catch (PathTooLongException ptlEx) { _ui.DisplayError($"  Error: Resulting path for '{relativePath}' is too long. Skipping. {ptlEx.Message}"); return false; }
+            catch (Exception pathEx) { _ui.DisplayError($"  Error resolving path for '{relativePath}'. Skipping. {pathEx.Message}"); return false; }
+
+            try
+            {
+                string? targetDir = Path.GetDirectoryName(fullPath);
+                if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
+                {
+                    _ui.DisplayMessage($"  Creating directory: {targetDir}");
+                    Directory.CreateDirectory(targetDir);
+                }
+
+                _ui.DisplayMessage($"  Writing file: {relativePath}");
+                File.WriteAllText(fullPath, content, Encoding.UTF8); // Assume UTF-8 for writing
+                return true; // Success
+            }
+            catch (UnauthorizedAccessException ex) { _ui.DisplayError($"  Error: Access denied writing file '{relativePath}'. Skipping. {ex.Message}"); }
+            catch (IOException ex) { _ui.DisplayError($"  Error: I/O error writing file '{relativePath}'. Skipping. {ex.Message}"); }
+            catch (Exception ex) { _ui.DisplayError($"  Error: Unexpected error writing file '{relativePath}'. Skipping. {ex.Message}"); }
+
+            return false; // Failed
+        }
+    }
+}
+
+// === End File: Core/FileSystemImporter.cs ===
+
+// === Start File: Core/IExporter.cs ===
+
+
+namespace AiCodeShareTool.Core
+{
+    /// <summary>
+    /// Defines the contract for exporting project files.
+    /// </summary>
+    public interface IExporter
+    {
+        /// <summary>
+        /// Exports files from a project directory to a specified output file.
+        /// </summary>
+        /// <param name="projectDirectory">The root directory of the project to export.</param>
+        /// <param name="exportFilePath">The path to the file where the exported content will be saved.</param>
+        void Export(string projectDirectory, string exportFilePath);
+    }
+}
+
+// === End File: Core/IExporter.cs ===
+
+// === Start File: Core/IImporter.cs ===
+
+
+namespace AiCodeShareTool.Core
+{
+    /// <summary>
+    /// Defines the contract for importing code from a structured file.
+    /// </summary>
+    public interface IImporter
+    {
+        /// <summary>
+        /// Imports files from a specified input file into a target project directory.
+        /// </summary>
+        /// <param name="projectDirectory">The root directory where the imported files will be placed.</param>
+        /// <param name="importFilePath">The path to the file containing the code to import.</param>
+        void Import(string projectDirectory, string importFilePath);
+    }
+}
+
+// === End File: Core/IImporter.cs ===
+
+// === Start File: Program.cs ===
+
+
+using AiCodeShareTool.Core;
+using AiCodeShareTool.UI;
+
+namespace AiCodeShareTool
+{
+    internal class Program
+    {
+        [STAThread] // Required for Windows Forms dialogs used by ConsoleUI
+        static void Main(string[] args)
+        {
+            // --- Dependency Setup ---
+            var appState = new ApplicationState(); // Holds session paths
+            IUserInterface ui = new ConsoleUI();
+            IExporter exporter = new FileSystemExporter(ui);
+            IImporter importer = new FileSystemImporter(ui);
+            // --- End Dependency Setup ---
+
+            ui.DisplayMessage("--- AI Code Share Tool ---");
+
+            bool exit = false;
+            while (!exit)
+            {
+                char choice = ui.ShowMainMenu();
+
+                switch (choice)
+                {
+                    case 'E':
+                        PerformExport(ui, exporter, appState);
+                        break;
+
+                    case 'I':
+                        PerformImport(ui, importer, appState);
+                        break;
+
+                    case 'C':
+                        ChangePaths(ui, appState);
+                        break;
+
+                    case 'Q':
+                        ui.DisplayMessage("Exiting tool. Goodbye!");
+                        exit = true;
+                        break;
+
+                    default:
+                        ui.DisplayWarning("Invalid choice. Please try again.");
+                        break;
+                }
+
+                if (!exit)
+                {
+                   ui.DisplayMessage("\n------------------------------");
+                   // Optional: Add a pause if operations finish too quickly
+                   // ui.WaitForEnter();
+                }
+            }
+        }
+
+        private static void PerformExport(IUserInterface ui, IExporter exporter, ApplicationState state)
+        {
+            ui.DisplayMessage("\n-- Export Operation --");
+
+            string? projDir = ui.GetDirectoryPath("Select the Project Directory to Export From", state.CurrentProjectDirectory);
+            if (string.IsNullOrEmpty(projDir)) { ui.DisplayWarning("Export cancelled: No project directory selected."); return; }
+            state.CurrentProjectDirectory = projDir; // Update state
+
+            string? exportFile = ui.GetSaveFilePath("Select Export File Path", "Text Files|*.txt|All Files|*.*", "txt", state.CurrentExportFilePath);
+            if (string.IsNullOrEmpty(exportFile)) { ui.DisplayWarning("Export cancelled: No export file selected."); return; }
+            state.CurrentExportFilePath = exportFile; // Update state
+
+            // Delegate the actual work to the exporter
+            exporter.Export(state.CurrentProjectDirectory, state.CurrentExportFilePath);
+        }
+
+        private static void PerformImport(IUserInterface ui, IImporter importer, ApplicationState state)
+        {
+            ui.DisplayMessage("\n-- Import Operation --");
+
+            string? projDir = ui.GetDirectoryPath("Select the Project Directory to Import Into", state.CurrentProjectDirectory);
+            if (string.IsNullOrEmpty(projDir)) { ui.DisplayWarning("Import cancelled: No project directory selected."); return; }
+            state.CurrentProjectDirectory = projDir; // Update state
+
+            string? importFile = ui.GetOpenFilePath("Select the Code File to Import", "Text Files|*.txt|All Files|*.*", state.CurrentImportFilePath);
+            if (string.IsNullOrEmpty(importFile)) { ui.DisplayWarning("Import cancelled: No import file selected."); return; }
+            state.CurrentImportFilePath = importFile; // Update state
+
+            // Delegate the actual work to the importer
+            importer.Import(state.CurrentProjectDirectory, state.CurrentImportFilePath);
+        }
+
+        private static void ChangePaths(IUserInterface ui, ApplicationState state)
+        {
+           char pathChoice = ui.AskChangePathChoice();
+
+            switch (pathChoice)
+            {
+                case '1': // Project Directory
+                    string? newProjDir = ui.GetDirectoryPath("Select New Project Directory", state.CurrentProjectDirectory, askUseCurrent: false); // Don't ask again immediately
+                    if (newProjDir != null) state.CurrentProjectDirectory = newProjDir;
+                    else ui.DisplayWarning("Project directory change cancelled.");
+                    break;
+                case '2': // Export File Path
+                    string? newExportFile = ui.GetSaveFilePath("Select New Export File", "Text Files|*.txt|All Files|*.*", "txt", state.CurrentExportFilePath, askUseCurrent: false);
+                    if (newExportFile != null) state.CurrentExportFilePath = newExportFile;
+                     else ui.DisplayWarning("Export file path change cancelled.");
+                    break;
+                case '3': // Import File Path
+                    string? newImportFile = ui.GetOpenFilePath("Select New Import File", "Text Files|*.txt|All Files|*.*", state.CurrentImportFilePath, askUseCurrent: false);
+                    if (newImportFile != null) state.CurrentImportFilePath = newImportFile;
+                     else ui.DisplayWarning("Import file path change cancelled.");
+                    break;
+                default:
+                    ui.DisplayMessage("Change paths cancelled.");
+                    break;
+            }
+        }
+    }
+}
+
+// === End File: Program.cs ===
+
+// === Start File: README.md ===
+
+# AiCodeShareTool
+
+// === End File: README.md ===
+
+// === Start File: UI/ConsoleUI.cs ===
+
+
+using System.Text;
+
+namespace AiCodeShareTool.UI
+{
+    /// <summary>
+    /// Implements the IUserInterface using the console and Windows Forms dialogs.
+    /// </summary>
+    public class ConsoleUI : IUserInterface
+    {
+        public ConsoleUI()
+        {
+            // Ensure console can display paths correctly, especially on Windows
+             try { Console.OutputEncoding = Encoding.UTF8; } catch { /* Ignore if fails */ }
+        }
+
+        public char ShowMainMenu()
+        {
+            Console.WriteLine("\nChoose an operation:");
+            Console.WriteLine(" E) Export Project");
+            Console.WriteLine(" I) Import Code");
+            Console.WriteLine(" C) Change Paths");
+            Console.WriteLine(" Q) Quit");
+            Console.Write("Enter your choice: ");
+            string? choice = Console.ReadLine()?.Trim().ToUpper();
+            return string.IsNullOrEmpty(choice) ? '\0' : choice[0];
+        }
+
+        public char AskChangePathChoice()
+        {
+            Console.WriteLine("\n-- Change Paths --");
+            Console.WriteLine("Select which path to change:");
+            Console.WriteLine(" 1) Project Directory");
+            Console.WriteLine(" 2) Export File Path");
+            Console.WriteLine(" 3) Import File Path");
+            Console.WriteLine(" Any other key to cancel");
+            Console.Write("Enter your choice: ");
+
+            var key = Console.ReadKey(intercept: true);
+            Console.WriteLine(); // Move to next line after key press
+
+            return key.KeyChar switch
+            {
+                '1' => '1',
+                '2' => '2',
+                '3' => '3',
+                _ => '\0', // Represents cancel or invalid choice
+            };
+        }
+
+        public string? GetDirectoryPath(string description, string? currentPath, bool askUseCurrent = true)
+        {
+            if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
+            {
+                if (AskToUseCurrentPath("directory", currentPath))
+                {
+                    if (Directory.Exists(currentPath)) return currentPath;
+                    DisplayWarning("Current directory no longer exists. Please select a new one.");
+                }
+                else
+                {
+                     DisplayMessage("Proceeding to select a new directory...");
+                }
+            }
+
+            using (var dialog = new FolderBrowserDialog())
+            {
+                dialog.Description = description;
+                dialog.UseDescriptionForTitle = true;
+                dialog.ShowNewFolderButton = true;
+                SetInitialDialogPath(dialog, currentPath);
+
+                DisplayMessage($"\nPlease select the directory: {description}");
+                DialogResult result = dialog.ShowDialog(); // Requires STAThread
+
+                if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.SelectedPath))
+                {
+                    DisplayMessage($"Selected Path: {dialog.SelectedPath}");
+                    return dialog.SelectedPath;
+                }
+                else
+                {
+                    DisplayWarning("Operation cancelled or no folder selected.");
+                    return null;
+                }
+            }
+        }
+
+        public string? GetSaveFilePath(string title, string filter, string defaultExt, string? currentPath, bool askUseCurrent = true)
+        {
+             if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
+            {
+                if (AskToUseCurrentPath("file path", currentPath))
+                {
+                    // No need to check existence for save dialog
+                    return currentPath;
+                }
+                 else
+                {
+                     DisplayMessage("Proceeding to select a new file path...");
+                }
+            }
+
+            using (var dialog = new SaveFileDialog())
+            {
+                dialog.Title = title;
+                dialog.Filter = filter;
+                dialog.DefaultExt = defaultExt;
+                dialog.AddExtension = true;
+                dialog.OverwritePrompt = true;
+                SetInitialDialogPath(dialog, currentPath);
+
+                DisplayMessage($"\nPlease select the file: {title}");
+                DialogResult result = dialog.ShowDialog(); // Requires STAThread
+
+                if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
+                {
+                    DisplayMessage($"Selected File: {dialog.FileName}");
+                    return dialog.FileName;
+                }
+                else
+                {
+                    DisplayWarning("Operation cancelled or no file selected.");
+                    return null;
+                }
+            }
+        }
+
+        public string? GetOpenFilePath(string title, string filter, string? currentPath, bool askUseCurrent = true)
+        {
+            if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
+            {
+                if (AskToUseCurrentPath("file", currentPath))
+                {
+                     if (File.Exists(currentPath)) return currentPath;
+                     DisplayWarning("Current file no longer exists. Please select a new one.");
+                }
+                 else
+                {
+                     DisplayMessage("Proceeding to select a new file path...");
+                }
+            }
+
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Title = title;
+                dialog.Filter = filter;
+                dialog.CheckFileExists = true;
+                dialog.Multiselect = false;
+                SetInitialDialogPath(dialog, currentPath);
+
+                DisplayMessage($"\nPlease select the file: {title}");
+                DialogResult result = dialog.ShowDialog(); // Requires STAThread
+
+                if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
+                {
+                     DisplayMessage($"Selected File: {dialog.FileName}");
+                    return dialog.FileName;
+                }
+                else
+                {
+                     DisplayWarning("Operation cancelled or no file selected.");
+                    return null;
+                }
+            }
+        }
+
+
+        private bool AskToUseCurrentPath(string pathType, string path)
+        {
+             Console.Write($"Current {pathType}: {path}. Use this? (Y/N): ");
+             var key = Console.ReadKey(intercept: true);
+             Console.WriteLine(); // New line after input
+             if (key.Key == ConsoleKey.Y)
+             {
+                 DisplayMessage($"Using current {pathType}.");
+                 return true;
+             }
+             if (key.Key != ConsoleKey.N) { DisplayWarning("Invalid input. Assuming 'No'."); }
+             return false;
+        }
+
+        private void SetInitialDialogPath(CommonDialog dialog, string? currentPath)
+        {
+            if (string.IsNullOrEmpty(currentPath)) return;
+
+            try
+            {
+                string? initialDir = null;
+                string? initialFileName = null;
+
+                if (dialog is FileDialog fileDialog)
+                {
+                    initialDir = Path.GetDirectoryName(currentPath);
+                    initialFileName = Path.GetFileName(currentPath);
+                    if (!string.IsNullOrEmpty(initialFileName))
+                    {
+                         fileDialog.FileName = initialFileName;
+                    }
+                }
+                else if (dialog is FolderBrowserDialog folderDialog)
+                {
+                    // FolderBrowserDialog expects SelectedPath to be the directory itself
+                    if (Directory.Exists(currentPath)) initialDir = currentPath;
+                    else initialDir = Path.GetDirectoryName(currentPath); // Fallback to parent if file path was given
+                }
+
+
+                if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
+                {
+                     // Set InitialDirectory for FileDialogs, SelectedPath for FolderBrowserDialog
+                    if (dialog is FileDialog fd) fd.InitialDirectory = initialDir;
+                    else if (dialog is FolderBrowserDialog fbd) fbd.SelectedPath = initialDir;
+                }
+                // No else needed, dialog defaults to a standard location
+            }
+            catch (ArgumentException)
+            {
+                // Handle cases like invalid chars or UNC paths FBD doesn't like
+                DisplayWarning("Warning: Could not set initial path (possibly invalid characters or network path issue). Starting from default location.");
+            }
+             catch (Exception ex) // Catch broader errors during path manipulation
+            {
+                DisplayWarning($"Warning: Unexpected error setting initial path: {ex.Message}. Starting from default location.");
+            }
+        }
+
+
+        public void DisplayMessage(string message)
+        {
+            Console.WriteLine(message);
+        }
+
+        public void DisplayWarning(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"Warning: {message}");
+            Console.ResetColor();
+        }
+
+        public void DisplayError(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Error: {message}");
+            Console.ResetColor();
+        }
+
+        public void DisplaySuccess(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine(message);
+            Console.ResetColor();
+        }
+
+        public void WaitForEnter()
+        {
+            Console.WriteLine("\nPress Enter to continue...");
+            Console.ReadLine();
+        }
+    }
+}
+
+// === End File: UI/ConsoleUI.cs ===
+
+// === Start File: UI/IUserInterface.cs ===
+
+
+namespace AiCodeShareTool
+{
+    /// <summary>
+    /// Defines the contract for user interactions.
+    /// </summary>
+    public interface IUserInterface
+    {
+        /// <summary>
+        /// Displays the main menu and gets the user's choice.
+        /// </summary>
+        /// <returns>The user's selected menu option character (uppercase).</returns>
+        char ShowMainMenu();
+
+        /// <summary>
+        /// Prompts the user to select a directory.
+        /// </summary>
+        /// <param name="description">The description to show the user.</param>
+        /// <param name="currentPath">The currently stored path for this type, if any.</param>
+        /// <param name="askUseCurrent">Whether to ask the user if they want to reuse the current path.</param>
+        /// <returns>The selected directory path, or null if cancelled.</returns>
+        string? GetDirectoryPath(string description, string? currentPath, bool askUseCurrent = true);
+
+        /// <summary>
+        /// Prompts the user to select a file path for saving.
+        /// </summary>
+        /// <param name="title">The title for the dialog.</param>
+        /// <param name="filter">The file filter string (e.g., "Text Files|*.txt").</param>
+        /// <param name="defaultExt">The default file extension (e.g., "txt").</param>
+        /// <param name="currentPath">The currently stored path for this type, if any.</param>
+        /// <param name="askUseCurrent">Whether to ask the user if they want to reuse the current path.</param>
+        /// <returns>The selected file path, or null if cancelled.</returns>
+        string? GetSaveFilePath(string title, string filter, string defaultExt, string? currentPath, bool askUseCurrent = true);
+
+        /// <summary>
+        /// Prompts the user to select an existing file path for opening.
+        /// </summary>
+        /// <param name="title">The title for the dialog.</param>
+        /// <param name="filter">The file filter string (e.g., "Text Files|*.txt").</param>
+        /// <param name="currentPath">The currently stored path for this type, if any.</param>
+        /// <param name="askUseCurrent">Whether to ask the user if they want to reuse the current path.</param>
+        /// <returns>The selected file path, or null if cancelled.</returns>
+        string? GetOpenFilePath(string title, string filter, string? currentPath, bool askUseCurrent = true);
+
+        /// <summary>
+        /// Displays a standard informational message to the user.
+        /// </summary>
+        /// <param name="message">The message to display.</param>
+        void DisplayMessage(string message);
+
+        /// <summary>
+        /// Displays a warning message to the user.
+        /// </summary>
+        /// <param name="message">The warning message to display.</param>
+        void DisplayWarning(string message);
+
+        /// <summary>
+        /// Displays an error message to the user.
+        /// </summary>
+        /// <param name="message">The error message to display.</param>
+        void DisplayError(string message);
+
+        /// <summary>
+        /// Displays a success message to the user.
+        /// </summary>
+        /// <param name="message">The success message to display.</param>
+        void DisplaySuccess(string message);
+
+
+        /// <summary>
+        /// Asks the user which path they want to change.
+        /// </summary>
+        /// <returns>Character representing the choice ('1', '2', '3') or '\0' for cancel.</returns>
+        char AskChangePathChoice();
+
+        /// <summary>
+        /// Waits for the user to press Enter before continuing.
+        /// </summary>
+        void WaitForEnter();
+    }
+}
+
+// === End File: UI/IUserInterface.cs ===
+
