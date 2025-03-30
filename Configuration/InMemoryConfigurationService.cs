@@ -32,14 +32,14 @@ namespace AiCodeShareTool.Configuration
                     searchPatterns: new[] {
                         "*.cs", "*.xaml", "*.csproj", "*.sln", "*.json", "*.xml", "*.config", "*.md",
                         "*.razor", "*.css", "*.js", "*.html", "*.htm", "*.props", "*.targets", "*.ruleset",
-                        ".dockerignore", "Dockerfile", ".editorconfig", "*.sh", "*.ps1", "*.cmd", "*.bat",
-                         "*.gitignore" // Keep .gitignore unless explicitly blacklisted below
+                        ".dockerignore", "Dockerfile", ".editorconfig", "*.sh", "*.ps1", "*.cmd", "*.bat"
+                         // Note: Removed *.gitignore from search patterns, will blacklist filename instead
                     },
                     blacklistedExtensions: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
                         ".user", ".suo", ".log", ".tmp", ".pdb", ".bak", ".dll", ".exe", ".nupkg", ".snupkg"
                     },
                     blacklistedFileNames: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                        "launchSettings.json", "package-lock.json", "yarn.lock"
+                        "launchSettings.json", "package-lock.json", "yarn.lock", ".gitignore" // Added .gitignore
                     }
                 ),
 
@@ -51,8 +51,8 @@ namespace AiCodeShareTool.Configuration
                         "*.json", "*.xml", "*.yaml", "*.yml", "*.toml", // Config
                         "*.md", "*.rst", // Documentation
                         "requirements.txt", "setup.py", "pyproject.toml", // Project/Dependency files
-                        ".dockerignore", "Dockerfile", ".editorconfig", "*.sh", "*.bat", // Scripts/Config
-                        ".gitignore"
+                        ".dockerignore", "Dockerfile", ".editorconfig", "*.sh", "*.bat" // Scripts/Config
+                        // Note: Removed .gitignore from search patterns, will blacklist filename instead
                     },
                     blacklistedExtensions: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
                        ".log", ".tmp", ".bak", ".pyc", ".pyd", ".so", // Compiled/OS specific
@@ -63,7 +63,8 @@ namespace AiCodeShareTool.Configuration
                        "__pycache__", // Directory, but good to list name too
                        ".env", // Often contains secrets
                        "pipfile.lock",
-                       "poetry.lock"
+                       "poetry.lock",
+                       ".gitignore" // Added .gitignore
                     }
                 ),
 
@@ -76,13 +77,14 @@ namespace AiCodeShareTool.Configuration
                         "*.sh", "*.ps1", "*.cmd", "*.bat",
                         "*.html", "*.htm", "*.css", "*.js",
                         "*.config", "*.ini",
-                        ".gitignore", ".editorconfig", "Dockerfile", ".dockerignore"
+                        ".editorconfig", "Dockerfile", ".dockerignore"
+                        // Note: Removed .gitignore from search patterns, will blacklist filename instead
                      },
                     blacklistedExtensions: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
                        ".log", ".tmp", ".bak"
                     },
                     blacklistedFileNames: new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                       // Fewer specific blacklisted names for generic
+                       ".gitignore" // Added .gitignore
                     }
                 )
 
