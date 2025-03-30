@@ -104,6 +104,6 @@ Spacing:
 Omission of Unchanged Files: Files provided in previous responses that are not explicitly part of the changes requested in the current prompt MUST be omitted from the output block.
 
 No Extra Text: Do not include any other text or comments between the files, other than the specified markers and blank lines.
-
+```
 
 Adhering to this format allows the AI to correctly process code changes and maintain project context across multiple interactions.
