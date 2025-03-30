@@ -1,6 +1,8 @@
 
 # AiCodeShareTool
 
+**Disclaimer:** This program was developed entirely by the Gemini 1.5 Pro language model from Google AI, based on a series of prompts defining requirements and requesting code generation and modifications.
+
 A simple Windows Forms application to export the text-based files from a project directory into a single, structured text file (suitable for sharing with AI models) and to import such a file back into a directory structure.
 
 ## Features
@@ -51,3 +53,42 @@ A simple Windows Forms application to export the text-based files from a project
     *   Add new profiles for other languages or project types.
 *   **Global Exclusions:** Edit the list of excluded folders in `Core/FileSystemExporter.cs` (`excludedFolders` variable within the `Export` method) if needed.
 *   **File Format:** Marker constants are defined in `Configuration/ExportSettings.cs`.
+
+## AI Interaction Format (System Instruction)
+
+This tool is designed to facilitate code sharing with AI models. The AI used to generate this tool (Gemini 2.5 Pro) expects interactions using the following format when requesting code updates or generation:
+
+```text
+Output Only New/Edited Files: Your response MUST only contain files that are newly created or have been edited/modified according to the current request. Do NOT include files requested in previous interactions if they remain unchanged.
+
+Encapsulation: All code for the new or edited files MUST be contained within one single markdown code block (e.g., ```csharp ... ``` or ```xml ... ``` as appropriate). Do NOT add any introductory or concluding text outside of this code block unless explicitly requested.
+
+File Markers: Each individual file's content included in the output MUST be clearly delineated by specific start and end markers.
+
+Start Marker Format: Before the content of each file, you MUST include a line exactly like this:
+
+
+// === Start File: {relativePath} ===
+
+End Marker Format: After the content of each file, you MUST include a line exactly like this:
+
+
+// === End File: {relativePath} ===
+
+
+Path Requirement: The `{relativePath}` placeholder in the markers MUST be the correct relative path of the file *from the project's base directory*, even if it's an existing file being modified.
+    *   Use forward slashes (/) as directory separators.
+    *   Examples: `MyClass.cs`, `Services/UserService.cs`, `Models/Order.cs`.
+
+Content Placement: The complete and unmodified content of the new or edited file MUST be placed between its corresponding Start File and End File markers.
+
+Spacing:
+    *   Include exactly one blank line immediately after the Start File marker line (before the file content).
+    *   Include exactly one blank line immediately before the End File marker line (after the file content).
+    *   Include exactly one blank line immediately after the End File marker line (before the next Start File marker, or the end of the code block).
+
+Omission of Unchanged Files: Files provided in previous responses that are not explicitly part of the changes requested in the current prompt MUST be omitted from the output block.
+
+No Extra Text: Do not include any other text or comments between the files, other than the specified markers and blank lines. ```
+
+Adhering to this format allows the AI to correctly process code changes and maintain project context across multiple interactions.
