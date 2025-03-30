@@ -11,7 +11,7 @@ namespace AiCodeShareTool.UI
         public ConsoleUI()
         {
             // Ensure console can display paths correctly, especially on Windows
-             try { Console.OutputEncoding = Encoding.UTF8; } catch { /* Ignore if fails */ }
+            try { Console.OutputEncoding = Encoding.UTF8; } catch { /* Ignore if fails */ }
         }
 
         public char ShowMainMenu()
@@ -59,7 +59,7 @@ namespace AiCodeShareTool.UI
                 }
                 else
                 {
-                     DisplayMessage("Proceeding to select a new directory...");
+                    DisplayMessage("Proceeding to select a new directory...");
                 }
             }
 
@@ -88,16 +88,16 @@ namespace AiCodeShareTool.UI
 
         public string? GetSaveFilePath(string title, string filter, string defaultExt, string? currentPath, bool askUseCurrent = true)
         {
-             if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
+            if (askUseCurrent && !string.IsNullOrEmpty(currentPath))
             {
                 if (AskToUseCurrentPath("file path", currentPath))
                 {
                     // No need to check existence for save dialog
                     return currentPath;
                 }
-                 else
+                else
                 {
-                     DisplayMessage("Proceeding to select a new file path...");
+                    DisplayMessage("Proceeding to select a new file path...");
                 }
             }
 
@@ -132,12 +132,12 @@ namespace AiCodeShareTool.UI
             {
                 if (AskToUseCurrentPath("file", currentPath))
                 {
-                     if (File.Exists(currentPath)) return currentPath;
-                     DisplayWarning("Current file no longer exists. Please select a new one.");
+                    if (File.Exists(currentPath)) return currentPath;
+                    DisplayWarning("Current file no longer exists. Please select a new one.");
                 }
-                 else
+                else
                 {
-                     DisplayMessage("Proceeding to select a new file path...");
+                    DisplayMessage("Proceeding to select a new file path...");
                 }
             }
 
@@ -154,12 +154,12 @@ namespace AiCodeShareTool.UI
 
                 if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(dialog.FileName))
                 {
-                     DisplayMessage($"Selected File: {dialog.FileName}");
+                    DisplayMessage($"Selected File: {dialog.FileName}");
                     return dialog.FileName;
                 }
                 else
                 {
-                     DisplayWarning("Operation cancelled or no file selected.");
+                    DisplayWarning("Operation cancelled or no file selected.");
                     return null;
                 }
             }
@@ -168,16 +168,16 @@ namespace AiCodeShareTool.UI
 
         private bool AskToUseCurrentPath(string pathType, string path)
         {
-             Console.Write($"Current {pathType}: {path}. Use this? (Y/N): ");
-             var key = Console.ReadKey(intercept: true);
-             Console.WriteLine(); // New line after input
-             if (key.Key == ConsoleKey.Y)
-             {
-                 DisplayMessage($"Using current {pathType}.");
-                 return true;
-             }
-             if (key.Key != ConsoleKey.N) { DisplayWarning("Invalid input. Assuming 'No'."); }
-             return false;
+            Console.Write($"Current {pathType}: {path}. Use this? (Y/N): ");
+            var key = Console.ReadKey(intercept: true);
+            Console.WriteLine(); // New line after input
+            if (key.Key == ConsoleKey.Y)
+            {
+                DisplayMessage($"Using current {pathType}.");
+                return true;
+            }
+            if (key.Key != ConsoleKey.N) { DisplayWarning("Invalid input. Assuming 'No'."); }
+            return false;
         }
 
         private void SetInitialDialogPath(CommonDialog dialog, string? currentPath)
@@ -195,7 +195,7 @@ namespace AiCodeShareTool.UI
                     initialFileName = Path.GetFileName(currentPath);
                     if (!string.IsNullOrEmpty(initialFileName))
                     {
-                         fileDialog.FileName = initialFileName;
+                        fileDialog.FileName = initialFileName;
                     }
                 }
                 else if (dialog is FolderBrowserDialog folderDialog)
@@ -208,7 +208,7 @@ namespace AiCodeShareTool.UI
 
                 if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
                 {
-                     // Set InitialDirectory for FileDialogs, SelectedPath for FolderBrowserDialog
+                    // Set InitialDirectory for FileDialogs, SelectedPath for FolderBrowserDialog
                     if (dialog is FileDialog fd) fd.InitialDirectory = initialDir;
                     else if (dialog is FolderBrowserDialog fbd) fbd.SelectedPath = initialDir;
                 }
@@ -219,7 +219,7 @@ namespace AiCodeShareTool.UI
                 // Handle cases like invalid chars or UNC paths FBD doesn't like
                 DisplayWarning("Warning: Could not set initial path (possibly invalid characters or network path issue). Starting from default location.");
             }
-             catch (Exception ex) // Catch broader errors during path manipulation
+            catch (Exception ex) // Catch broader errors during path manipulation
             {
                 DisplayWarning($"Warning: Unexpected error setting initial path: {ex.Message}. Starting from default location.");
             }
@@ -256,6 +256,11 @@ namespace AiCodeShareTool.UI
         {
             Console.WriteLine("\nPress Enter to continue...");
             Console.ReadLine();
+        }
+
+        public void ClearOutput()
+        {
+            throw new NotImplementedException();
         }
     }
 }

@@ -1,8 +1,10 @@
 ﻿
+
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<OutputType>Exe</OutputType>
+		<!-- Changed OutputType to WinExe for a GUI application -->
+		<OutputType>WinExe</OutputType>
 
 		<!-- Make sure this targets your .NET version AND includes -windows -->
 		<TargetFramework>net9.0-windows</TargetFramework>
@@ -13,6 +15,9 @@
 
 		<!-- This line enables Windows Forms features -->
 		<UseWindowsForms>true</UseWindowsForms>
+
+		<!-- Optional: Set a default namespace if desired -->
+		<!-- <RootNamespace>AiCodeShareTool</RootNamespace> -->
 
 	</PropertyGroup>
 

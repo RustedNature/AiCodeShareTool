@@ -1,4 +1,5 @@
 ﻿
+
 namespace AiCodeShareTool.Configuration
 {
     /// <summary>

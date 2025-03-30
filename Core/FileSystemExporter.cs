@@ -1,4 +1,5 @@
 ﻿
+
 using System.Text;
 using AiCodeShareTool.Configuration;
 
@@ -18,6 +19,9 @@ namespace AiCodeShareTool.Core
 
         public void Export(string projectDirectory, string exportFilePath)
         {
+            _ui.ClearOutput(); // Clear previous messages in UI
+            _ui.DisplayMessage($"--- Starting Export ---");
+
             if (!ValidateInputs(projectDirectory, exportFilePath)) return;
 
             try
@@ -30,7 +34,7 @@ namespace AiCodeShareTool.Core
 
                 if (codeFiles.Length == 0)
                 {
-                    _ui.DisplayWarning($"No suitable, non-blacklisted files found matching patterns in '{projectDirectory}'.");
+                    _ui.DisplayWarning($"No suitable, non-blacklisted files found matching patterns in '{projectDirectory}'. Export aborted.");
                     return;
                 }
 
@@ -38,25 +42,45 @@ namespace AiCodeShareTool.Core
 
                 WriteExportFile(projectDirectory, exportFilePath, codeFiles);
 
-                _ui.DisplaySuccess($"Export completed successfully to '{exportFilePath}'.");
+                _ui.DisplaySuccess($"\nExport completed successfully to '{exportFilePath}'.");
             }
             catch (UnauthorizedAccessException ex) { _ui.DisplayError($"Access denied during export. {ex.Message}"); }
             catch (IOException ex) { _ui.DisplayError($"I/O error during export setup/write. {ex.Message}"); }
             catch (Exception ex) { _ui.DisplayError($"Unexpected error during export. {ex.Message}"); }
+            finally
+            {
+                 _ui.DisplayMessage($"--- Export Finished ---");
+            }
         }
 
         private bool ValidateInputs(string projectDirectory, string exportFilePath)
         {
+             if (string.IsNullOrWhiteSpace(projectDirectory))
+             {
+                 _ui.DisplayError("Project directory path is missing.");
+                 return false;
+             }
             if (!Directory.Exists(projectDirectory))
             {
                 _ui.DisplayError($"Project directory '{projectDirectory}' not found or inaccessible.");
                 return false;
             }
-            if (string.IsNullOrEmpty(exportFilePath))
+            if (string.IsNullOrWhiteSpace(exportFilePath))
             {
-                _ui.DisplayError("Export file path is invalid.");
+                _ui.DisplayError("Export file path is missing.");
                 return false;
             }
+            // Check if export file path is valid (basic check)
+            try
+            {
+                Path.GetFullPath(exportFilePath);
+            }
+            catch (Exception ex)
+            {
+                 _ui.DisplayError($"Export file path is invalid: {ex.Message}");
+                return false;
+            }
+
             return true;
         }
 
@@ -93,7 +117,7 @@ namespace AiCodeShareTool.Core
             }
 
             string fullProjDirPath = Path.GetFullPath(projectDirectory);
-            string lowerProjDir = fullProjDirPath.ToLowerInvariant();
+            string lowerProjDir = fullProjDirPath.ToLowerInvariant() + Path.DirectorySeparatorChar; // Ensure trailing slash
 
             // Pre-compile path fragments for efficiency
             string binPathFragment = Path.DirectorySeparatorChar + ExportSettings.BinFolderName + Path.DirectorySeparatorChar;
@@ -106,14 +130,14 @@ namespace AiCodeShareTool.Core
                 .ToArray();
         }
 
-        private bool IsFileValidForExport(string filePath, string lowerProjDir, string binFrag, string objFrag, string vsFrag)
+        private bool IsFileValidForExport(string filePath, string lowerProjDirWithSlash, string binFrag, string objFrag, string vsFrag)
         {
             try
             {
                 string fullFilePath = Path.GetFullPath(filePath); // Resolve symlinks etc.
                 string lowerFullFilePath = fullFilePath.ToLowerInvariant();
                 string fileName = Path.GetFileName(filePath);
-                string fileExtension = Path.GetExtension(filePath); // Includes the dot
+                string fileExtension = Path.GetExtension(filePath)?.ToLowerInvariant() ?? ""; // Includes the dot, handle null
 
                 bool isExcludedFolder = lowerFullFilePath.Contains(binFrag, StringComparison.OrdinalIgnoreCase) ||
                                         lowerFullFilePath.Contains(objFrag, StringComparison.OrdinalIgnoreCase) ||
@@ -123,7 +147,8 @@ namespace AiCodeShareTool.Core
                                       (!string.IsNullOrEmpty(fileExtension) && ExportSettings.BlacklistedExtensions.Contains(fileExtension));
 
                 // Must be within project dir, not in excluded folders, and not blacklisted
-                return lowerFullFilePath.StartsWith(lowerProjDir, StringComparison.OrdinalIgnoreCase) && !isExcludedFolder && !isBlacklisted;
+                // Ensure startsWith check includes the directory separator for exact match
+                return lowerFullFilePath.StartsWith(lowerProjDirWithSlash, StringComparison.OrdinalIgnoreCase) && !isExcludedFolder && !isBlacklisted;
             }
             catch (Exception ex)
             {
@@ -156,6 +181,7 @@ namespace AiCodeShareTool.Core
                         writer.WriteLine(); // Blank line before end marker
                         writer.WriteLine($"{ExportSettings.EndFileMarkerPrefix} {markerPath}{ExportSettings.MarkerSuffix}");
                         writer.WriteLine(); // Blank line after end marker
+                        _ui.DisplayMessage($"  + Exported: {relativePath}"); // Provide feedback
                     }
                     catch (IOException readEx) { _ui.DisplayWarning($"Could not read file '{filePath}'. Skipping. Error: {readEx.Message}"); }
                     catch (Exception fileEx) { _ui.DisplayWarning($"An unexpected error occurred processing file '{filePath}'. Skipping. Error: {fileEx.Message}"); }
